@@ -4,6 +4,11 @@ library(future)
 library(QDNAseq)
 library(QDNAseq.hg38)
 ###############################################################################
+
+#parallelise
+future::plan("multisession")
+
+###############################################################################
 all_readCounts <- list.files("./2_QDNA_readCounts/")
 
 load("bam_by_patient.RData")
