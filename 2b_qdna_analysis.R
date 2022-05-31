@@ -69,10 +69,10 @@ qdna_analysis <- function(p){
   
   #COPY NUMBER OF EACH BIN
   exportBins(copyNumbersCalled, type = "copynumber", 
-             paste0("raw_cn_",patient_ids[p_num],".txt"), logTransform = FALSE)
+             file = paste0("2_QDNA_CNout/raw_cn_",patient_ids[p_num],".txt"), logTransform = FALSE)
   #COPY NUMBER OF SEGMENTS
   exportBins(copyNumbersCalled, type = "segments", 
-             paste0("segment_",patient_ids[p_num],".txt"), 
+             file = paste0("2_QDNA_CNout/segment_",patient_ids[p_num],".txt"), 
              logTransform = FALSE)
 }
 
