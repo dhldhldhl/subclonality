@@ -1,6 +1,5 @@
 #setwd
-wd <- "/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl"
-setwd(wd)
+wd <- "/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl/subclonality"
 bam_dir <- "/rds/project/rds-csoP2nj6Y6Y/ctDNA/data/Antwerp/bam_files/mapped_hg38/"
 ###############################################################################
 
