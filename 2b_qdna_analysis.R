@@ -78,7 +78,7 @@ qdna_analysis <- function(p){
 
 
 p_vec <- 1:length(bam_by_patient)
-sapply(p_vec, function(x) process_bam(x))
+sapply(p_vec, function(x) qdna_analysis(x))
 
 
 # #Plot1
