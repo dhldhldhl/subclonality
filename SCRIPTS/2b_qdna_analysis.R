@@ -9,9 +9,9 @@ library(QDNAseq.hg38)
 future::plan("multisession")
 
 ###############################################################################
-all_readCounts <- list.files("./2_QDNA_readCounts/")
+all_readCounts <- list.files("DATA/2_QDNA_readCounts/")
 
-load("bam_by_patient.RData")
+load("DATA/bam_by_patient.RData")
 
 qdna_analysis <- function(p){
   #patient number
@@ -19,7 +19,7 @@ qdna_analysis <- function(p){
   print(paste0("Starting analysis number: ", p_num))
   
   #load patient readCounts (from 2a_qdna_process_bam.R)
-  load(paste0("./2_QDNA_readCounts/",all_readCounts[p_num]))
+  load(paste0("DATA/2_QDNA_readCounts/",all_readCounts[p_num]))
   
   #Plot1
   #Plot a raw copy number profile (read counts across the genome)

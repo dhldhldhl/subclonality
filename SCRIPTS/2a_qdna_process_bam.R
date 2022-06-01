@@ -1,3 +1,4 @@
+#To be run on ICELAKE
 #setwd
 wd <- "/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl/subclonality"
 bam_dir <- "/rds/project/rds-csoP2nj6Y6Y/ctDNA/data/Antwerp/bam_files/mapped_hg38/"
@@ -20,7 +21,7 @@ bins <- getBinAnnotations(binSize=500, genome="hg38")
 print("Bin annotations obtained")
 
 #load bam_by_patient from 1_sort_bam.R
-load("bam_by_patient.RData")
+load("DATA/bam_by_patient.RData")
 
 process_bam <- function(p){
   #patient number
@@ -34,7 +35,7 @@ process_bam <- function(p){
   
   #save readCounts as RData file
   setwd(wd)
-  filename <- paste0("2_QDNA_readCounts/readCounts_patient", 
+  filename <- paste0("DATA/2_QDNA_readCounts/readCounts_patient", 
                      patient_ids[p_num], ".RData")
   save(readCounts, file = filename)
   print("readCounts saved")

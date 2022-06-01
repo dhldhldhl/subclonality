@@ -4,12 +4,12 @@ require(gtools); library(gridExtra); library(devtools)
 source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
 
 #read outputs of QDNAseq
-load("bam_by_patient.RData")
+load("DATA/bam_by_patient.RData")
 p_vec <- 1:length(patient_ids)
 p <- p_vec[10]
 
-seg.df <- read.delim(paste0("2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
-cn.df <- read.delim(paste0("2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
+seg.df <- read.delim(paste0("DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
+cn.df <- read.delim(paste0("DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
 
 seg.df <- seg.df[,-(1:4)]
 cn.df <- cn.df[,-(1:4)]
@@ -239,15 +239,16 @@ cat('Final result table:\n'); print(final.results)
 
 
 ################################################################################
+#STEP A
 #get estimated purity for all samples
 #read outputs of QDNAseq
-load("bam_by_patient.RData")
+load("DATA/bam_by_patient.RData")
 p_vec <- 1:length(patient_ids)
 
 get_purity <- function(p){
   print(paste0("Processing ", p, "/80"))
-  seg.df <- read.delim(paste0("2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
-  cn.df <- read.delim(paste0("2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
+  seg.df <- read.delim(paste0("DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
+  cn.df <- read.delim(paste0("DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
   
   seg.df <- seg.df[,-(1:4)]
   cn.df <- cn.df[,-(1:4)]
@@ -325,4 +326,14 @@ names(all_patient_purities) <- paste0("patient_", patient_ids)
 
 save(all_patient_purities, 
      file = "DATA/all_patient_purities.RData")
+
+#STEP B
+load("DATA/all_patient_purities.RData")
+binded_all <- bind_cols(all_patient_purities)
+
+plot(density(unlist(binded_all[1,])),
+     main = "Density plot of mean purities across all samples \n 
+     in all patients")
+
+
 

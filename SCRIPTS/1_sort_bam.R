@@ -1,6 +1,6 @@
 ##############################################################################
-load("antwerpData.RData")
-bam_files <- read.csv("bam_file_names.txt")
+load("DATA/antwerpData.RData")
+bam_files <- read.csv("DATA/bam_file_names.txt")
 bam_files <- bam_files[-grep(pattern = ".bai", x = bam_files[,1]),]
 
 patient_ids <- unique(ichorCNA$Patient_ID)
