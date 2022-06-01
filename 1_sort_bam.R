@@ -24,4 +24,4 @@ getPatientBam <- function(p){
 }
 
 bam_by_patient <- sapply(1:length(patient_ids), function(x) getPatientBam(x))
-save(bam_by_patient, file = "bam_by_patient.RData")
+save(bam_by_patient, patient_ids, file = "bam_by_patient.RData")

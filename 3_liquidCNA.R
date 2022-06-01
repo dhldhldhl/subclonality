@@ -245,6 +245,7 @@ load("bam_by_patient.RData")
 p_vec <- 1:length(patient_ids)
 
 get_purity <- function(p){
+  print(paste0("Processing ", p, "/80"))
   seg.df <- read.delim(paste0("2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
   cn.df <- read.delim(paste0("2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
   
@@ -284,7 +285,6 @@ get_purity <- function(p){
   }
   
   # Purity Estimation 
-  
   w = c(0.3,1,0.8,0.15,0.05) #weights of different CN states
   maxCN=8 #assumed maximum CN 
   adjVec = c(0.5,0.6,0.8,0.9,1,1.2,1.3,1.5,1.8,2) #smoothing kernel adjustments
@@ -315,9 +315,14 @@ get_purity <- function(p){
   return(pHat.df)
 }
 
-all_patient_purities <- sapply(p_vec, function(x) get_purity(x))
+all_patient_purities <- vector(mode = "list", length = 80)
+for(x in 1:length(p_vec)){
+  tryCatch({
+    all_patient_purities[[x]] <- get_purity(x)
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
 names(all_patient_purities) <- paste0("patient_", patient_ids)
-all_patient_purities
 
-
+save(all_patient_purities, 
+     file = "DATA/all_patient_purities.RData")
 
