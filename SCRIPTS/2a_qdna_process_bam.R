@@ -32,7 +32,7 @@ process_bam <- function(p){
   #Processing BAM files
   setwd(bam_dir)
   test_bams <- bam_by_patient[p]
-  readCounts <- binReadCounts(bins, bamfiles=test_bams)
+  readCounts <- binReadCounts(bins, bamfiles=unname(unlist(test_bams)))
   print("Bam files processed")
   
   #save readCounts as RData file
