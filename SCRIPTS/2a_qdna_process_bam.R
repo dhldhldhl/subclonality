@@ -33,7 +33,7 @@ process_bam <- function(p){
   
   #save readCounts as RData file
   setwd(wd)
-  filename <- paste0("../DATA/2_QDNA_readCounts/readCounts_", 
+  filename <- paste0("/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl/DATA/2_QDNA_readCounts/readCounts_", 
                      names(test_bams), ".RData")
   save(readCounts, file = filename)
   print("readCounts saved")
