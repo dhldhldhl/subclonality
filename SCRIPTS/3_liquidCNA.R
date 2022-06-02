@@ -247,8 +247,8 @@ p_vec <- 1:length(patient_ids)
 
 get_purity <- function(p){
   print(paste0("Processing ", p, "/80"))
-  seg.df <- read.delim(paste0("DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
-  cn.df <- read.delim(paste0("DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
+  seg.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
+  cn.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
   
   seg.df <- seg.df[,-(1:4)]
   cn.df <- cn.df[,-(1:4)]
@@ -328,8 +328,10 @@ save(all_patient_purities,
      file = "DATA/all_patient_purities.RData")
 
 #STEP B
-load("DATA/all_patient_purities.RData")
+load("../../DATA/all_patient_purities.RData")
+all_patient_purities
 binded_all <- bind_cols(all_patient_purities)
+#2804 is null
 
 plot(density(unlist(binded_all[1,])),
      main = "Density plot of mean purities across all samples \n 

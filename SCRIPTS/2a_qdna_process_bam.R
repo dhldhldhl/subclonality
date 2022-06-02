@@ -21,22 +21,23 @@ bins <- getBinAnnotations(binSize=500, genome="hg38")
 print("Bin annotations obtained")
 
 #load bam_by_patient from 1_sort_bam.R
-load("DATA/bam_by_patient.RData")
+load("../DATA/bam_by_patient.RData")
+
+patient_ids
+bam_by_patient
 
 process_bam <- function(p){
-  #patient number
-  p_num <- p
   
   #Processing BAM files
   setwd(bam_dir)
-  test_bams <- bam_by_patient[[p_num]]
+  test_bams <- bam_by_patient[p]
   readCounts <- binReadCounts(bins, bamfiles=test_bams)
   print("Bam files processed")
   
   #save readCounts as RData file
   setwd(wd)
-  filename <- paste0("DATA/2_QDNA_readCounts/readCounts_patient", 
-                     patient_ids[p_num], ".RData")
+  filename <- paste0("../DATA/2_QDNA_readCounts/readCounts_", 
+                     names(test_bams), ".RData")
   save(readCounts, file = filename)
   print("readCounts saved")
 }
