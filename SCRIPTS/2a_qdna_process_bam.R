@@ -15,6 +15,7 @@ library(QDNAseq.hg38)
 future::plan("multisession")
 
 ###############################################################################
+setwd(wd) 
 
 #500kb bin annotation of genome
 bins <- getBinAnnotations(binSize=500, genome="hg38")
