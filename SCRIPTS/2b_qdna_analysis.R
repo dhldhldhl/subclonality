@@ -1,3 +1,7 @@
+#setwd
+wd <- "/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl/subclonality"
+setwd(wd)
+
 ###############################################################################
 #load packages
 library(future)
@@ -9,17 +13,23 @@ library(QDNAseq.hg38)
 future::plan("multisession")
 
 ###############################################################################
-all_readCounts <- list.files("DATA/2_QDNA_readCounts/")
+all_readCounts <- list.files("../DATA/2_QDNA_readCounts/")
 
-load("DATA/bam_by_patient.RData")
+load("../DATA/bam_by_patient.RData")
+
+#parse to get order of patient ids
+readCount_name_1 <- strsplit(all_readCounts, ".", fixed = TRUE)
+readCount_name_2 <- lapply(readCount_name_1, function(x) x[[1]][1])
+readCount_name_3 <- strsplit(unlist(readCount_name_2), "_", fixed = TRUE)
+readCount_name_4 <- lapply(readCount_name_3, function(y) y[[3]])
+readCount_name_5 <- unlist(readCount_name_4)
 
 qdna_analysis <- function(p){
-  #patient number
-  p_num <- p
-  print(paste0("Starting analysis number: ", p_num))
+  
+  print(paste0("Starting analysis number: ", p))
   
   #load patient readCounts (from 2a_qdna_process_bam.R)
-  load(paste0("DATA/2_QDNA_readCounts/",all_readCounts[p_num]))
+  load(paste0("../DATA/2_QDNA_readCounts/",all_readCounts[p]))
   
   #Plot1
   #Plot a raw copy number profile (read counts across the genome)
@@ -74,15 +84,14 @@ qdna_analysis <- function(p){
   
   #COPY NUMBER OF EACH BIN
   exportBins(copyNumbersCalled, type = "copynumber", 
-             paste0("raw_cn_",patient_ids[p_num],".txt"), logTransform = FALSE)
+             paste0("raw_cn_",readCount_name_5[p],".txt"), logTransform = FALSE)
   #COPY NUMBER OF SEGMENTS
   exportBins(copyNumbersCalled, type = "segments", 
-             paste0("segment_",patient_ids[p_num],".txt"), 
+             paste0("segment_",readCount_name_5[p],".txt"), 
              logTransform = FALSE)
 }
 
-
-p_vec <- 1:length(bam_by_patient)
+p_vec <- 1:length(patient_ids)
 sapply(p_vec, function(x) qdna_analysis(x))
 
 
