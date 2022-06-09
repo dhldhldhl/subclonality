@@ -3,13 +3,21 @@ library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq);
 require(gtools); library(gridExtra); library(devtools)
 source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
 
-#read outputs of QDNAseq
-load("DATA/bam_by_patient.RData")
-p_vec <- 1:length(patient_ids)
-p <- p_vec[10]
+################################################################################
 
-seg.df <- read.delim(paste0("DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
-cn.df <- read.delim(paste0("DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
+#setwd
+wd <- "/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality"
+setwd(wd)
+
+################################################################################
+
+#read outputs of QDNAseq
+load("../DATA/bam_by_patient.RData")
+p_vec <- 1:length(patient_ids)
+p <- p_vec[50]
+
+seg.df <- read.delim(paste0("../DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
+cn.df <- read.delim(paste0("../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
 
 seg.df <- seg.df[,-(1:4)]
 cn.df <- cn.df[,-(1:4)]
@@ -57,7 +65,7 @@ for(i in 1:nrow(seg.sub)){
 ##########################################
 ########### Purity Estimation ############
 ##########################################
-w = c(0.3,1,0.8,0.15,0.05) #weights of different CN states
+w = c(0.3,1,1,0.15,0.05) #weights of different CN states
 maxCN=8 #assumed maximum CN 
 adjVec = c(0.5,0.6,0.8,0.9,1,1.2,1.3,1.5,1.8,2) #smoothing kernel adjustments
 pVec = seq(0.05, 0.5, by=0.005) #range of purity values to be evaluated
@@ -70,13 +78,22 @@ row.names(pHat.df) <- c('mean','median')
 
 #The plots show the error of the fit over the range of purity values 
 for(i in 1:ncol(seg.df.upd)){
-  x <- na.omit(seg.df.upd[,i])
+  #for each time sample...
+  
+  x <- na.omit(seg.df.upd[,i]) #get rid of NA rows (i.e., segments with NAs)
+  
   pFits <- as.data.frame(sapply(adjVec,
                                 function(a) sapply(pVec,
                                                    function(p) evalPurityDensity(p,w,a,x,maxCN))))
+  #each row: the 1 purity value evaluated
+  #each column: 1 adjVec, a smoothing kernel adjustment
+  #each value: error for given purity/adjVec
+  
   pFits$p <- pVec
   mins <- c(pVec[which.min(apply(pFits[,1:length(adjVec)],1,mean))],
             pVec[which.min(apply(pFits[,1:length(adjVec)],1,median))])
+  #which row (purity) has minimum mean error and minimum median error?
+  
   plF <- ggplot(melt(pFits,id='p'), aes(x=p, y=value)) + geom_point(size=2, alpha=0.3)+
     theme_bw() +
     geom_vline(xintercept = mins, linetype=c('dashed','dotted'), colour=c('red','blue')) +
@@ -117,16 +134,31 @@ nCol <- length(colToUse)
 seg.dcn.toOrder <- seg.dcn.nonBase[,colToUse]
 ordVec <- permutations(nCol,nCol,colToUse)
 
+#Initial filtering to find best sample order 
 #Set parameters to be used when evaluating sample order and segment monotony
-filterMethod <- 'sd'#exclude clonal, sd < theta
-cutOffVec <- seq(0.025,0.5,by=0.005) #cut-off values for pre-filtering
+filterMethod <- 'sd' #filter by saying... if sd < theta, segment = clonal
+cutOffVec <- seq(0.025,0.5,by=0.005) #thetas to try for initial-filtering
 epsilon <- 0.05 #error margin for monotony
 
 #Diagnostic plot
+  #at different thetas shows:
+    #the proportion of subclonal segments (of non-clonal segments)
+    #total number of non-clonal (light blue)
+    #and subclonal (dark blue) segments
 fitInfo <- list()
 for (cutOff in cutOffVec){
   seg.dcn.Eval <- filterSegmentRatios(seg.dcn.toOrder, cutOff, filterMethod, 0)
+  #Filter relative segment values (compared to baseline) to discard clonal 
+    #(nonchanging) segments that stay relatively constant
+    #Returns: a filtered set of a segments that have values exceeding the threshold
+  
   best <- findBestOrder(seg.dcn.Eval, ordVec, epsilon, nCol, 0)
+  #Input: segments where clonal segments are initially filtered
+  #Returns: 
+    #$cons: row-names of all segments considered, 
+    #max: maximum fit gained, 
+    #$ord: order with the maximum fit, 
+    #$segs:segments monotone according to max fit
   fitInfo[[as.character(cutOff)]] <- best
 }
 
@@ -149,7 +181,7 @@ grid.arrange(p1,p2,nrow=1)
 #while maximises the subclonal proportion
 
 #optimal cut-off for wanted  number of segment
-minSegmentNumber <- 12
+minSegmentNumber <- 9
 recommendCutOff <- getCutOffAuto(fitInfo.df, minSegmentNumber)
 cat('Recommended cut-off is: ', recommendCutOff)
 
@@ -242,13 +274,13 @@ cat('Final result table:\n'); print(final.results)
 #STEP A
 #get estimated purity for all samples
 #read outputs of QDNAseq
-load("DATA/bam_by_patient.RData")
+load("../DATA/bam_by_patient.RData")
 p_vec <- 1:length(patient_ids)
 
-get_purity <- function(p){
-  print(paste0("Processing ", p, "/80"))
-  seg.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
-  cn.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
+get_purity <- function(p_num){
+  print(paste0("Processing ", p_num, "/80"))
+  seg.df <- read.delim(paste0("../DATA/2_QDNA_CNout/segment_", patient_ids[p_num], ".txt"))
+  cn.df <- read.delim(paste0("../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p_num], ".txt"))
   
   seg.df <- seg.df[,-(1:4)]
   cn.df <- cn.df[,-(1:4)]
@@ -322,20 +354,23 @@ for(x in 1:length(p_vec)){
     all_patient_purities[[x]] <- get_purity(x)
   }, error=function(e){cat("ERROR at:", x, "\n")})
 }
+#error at 31
 names(all_patient_purities) <- paste0("patient_", patient_ids)
 
 save(all_patient_purities, 
-     file = "DATA/all_patient_purities.RData")
+     file = "../DATA/all_patient_purities.RData")
 
 #STEP B
-load("../../DATA/all_patient_purities.RData")
+load("../DATA/all_patient_purities.RData")
 all_patient_purities
 binded_all <- bind_cols(all_patient_purities)
-#2804 is null
+ncol(binded_all)
+#patient_2789 is null
+
+bam_by_patient
 
 plot(density(unlist(binded_all[1,])),
-     main = "Density plot of mean purities across all samples \n 
-     in all patients")
+     main = "Density plot of mean purities across all samples in all patients")
 
 
 
