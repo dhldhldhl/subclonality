@@ -1,0 +1,739 @@
+---
+title: "Part 3 liquidCNA"
+author: "Dohun Lee"
+date: "01/06/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+```
+
+This is a R Markdown document going through the steps of liquidCNA
+pipeline for one patient. We will go through each function of the
+package exploring the maths being done, assumptions being made and
+defaults being used.
+
+The pipeline of liquidCNA is as following: ![Alt
+text](../IMAGES/liquidCNA_pipeline.png)
+
+# 1. Segment CN distribution
+
+## 1.1 First, we load the outputs of QDNA...
+
+The input into liquidCNA are two outputs from QDNAseq. QDNAseq is an R
+package for copy number analysis. ctDNA for each of the time points from
+each of our patients are sequence at 0.1x coverage with lpWGS. These
+sequencing reads are stored in fastq files. The reads are aligned to
+hg38 reference genome and the alignment mapping are stored in BAM files.
+QDNAseq bins the referenced hg38 genome (**in our case by 500kb
+annotation genome, recommended by the liquidCNA pipeline**), then from
+the BAM files, counts the number of reads that are mapped to each bin.
+The read counts are filtered and corrected by blacklist regions in the
+genome, GC content and mappability. From this QDNAseq then determine the
+copy number aberration. From here the first output of QDNAseq for
+liquidCNA is exported: **raw_cn.txt**, which has the raw CN (as
+determined by QDNAseq) for each of the 500kb bins across the genome.
+From the called CNA, the genome is further analysed for segmentation.
+Segmentation are contiguous regions/chunks of the genome with a shared
+copy number. Segmentation is done via the package DNAcopy with the CBS
+algorithm. In the second output **segment.txt** each 500kb bins are
+annotated with the CN of the segment the bins belong to.
+
+Load raw CN of individual bins and CN of segments outputted from QDNA
+for one of the patients.
+
+```{r load QDNAoutput}
+#load parsed metadata
+load("../../DATA/bam_by_patient.RData")
+p_vec <- 1:length(patient_ids)
+p <- p_vec[12] 
+
+#load QDNA output of CN dataframe 
+seg.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
+cn.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
+
+#parse dataframe
+seg.df <- seg.df[,-(1:4)]
+cn.df <- cn.df[,-(1:4)]
+
+colnames(seg.df) <- paste0("Sample", 1:ncol(seg.df))
+colnames(cn.df) <- paste0("Sample", 1:ncol(cn.df))
+
+#re-normalise raw and segmented CN values to be centred at CN=2
+reNorm <- centreSegs(seg.df)
+
+seg.df <- as.data.frame(t(t(seg.df)/reNorm)*2)
+cn.df <- as.data.frame(t(t(cn.df)/reNorm)*2)
+```
+
+### centreSegs()
+
+centreSegs() takes segment CN for each time sample, **adjusts its
+density by 0.75**, then finds the peak of this adjusted density. This
+returns re-normalised constant for all CNs such that segment CNs for
+each sample can be centred around CN=2
+
+    centreSegs <- function(seg.df){
+      reNorm <- c()
+      for (i in 1:ncol(seg.df)){
+        x <- seg.df[,i]
+        y <- density(x, adjust=0.75) 
+        peax <- findpeaks(y$y)
+        reNorm <- c(reNorm, y$x[peax[which.max(peax[,1]),2]])
+      }
+      return(reNorm)
+    }
+
+Next, we plot the CN data for data exploration: Here, we can have a
+quick look at the CN states present and can also gauge the purity.
+Samples with low purity will have CN distribution centred around 2
+whilst higher purity values will have more widely distributed CNs.
+
+```{r exploreCN, echo=TRUE}
+head(seg.df)
+head(cn.df)
+#Plot the CN distribution of each sample to gain a quick overview
+ggplot(reshape2::melt(seg.df), aes(x=value,y=..scaled.., colour=variable)) +
+  geom_density(adjust=1) +
+  theme_bw() + scale_x_continuous(limits=c(0.5, 5)) +
+  labs(x='Segment copy number',y='Density',colour='')
+```
+
+## 1.2 Generate ensemble segments
+
+Generate a dataframe of ensemble segments contiguous sections of bins
+that are constant in ALL samples.
+
+```{r ensemble}
+segchange <- sapply(1:(nrow(seg.df)-1),
+                    function(i) sum(seg.df[i,]!=seg.df[(i+1),])>0)
+seg.data <- data.frame(start=c(1,which(segchange)+1),
+                       end=c(which(segchange),length(segchange)+1))
+seg.data$length <- seg.data$end - seg.data$start+1
+```
+
+Filter out small segments and update their values by fitting a normal
+distribution to bins in the segment. **Here, liquidCNA filters out
+segments smaller than 6M bases (i.e., 12 500kb bins)** This is to remove
+noisy bins and short segments.
+
+```{r manipulate_segments 1}
+#Filter segment
+seg.sub <- subset(seg.data, length>12) #12 500kb bins
+cat('Total number of segments retained: ',nrow(seg.sub))
+
+#Update segment 
+seg.fit <- getNormalFitSegments(seg.sub, cn.df)
+```
+
+### getNormalFitSegments()
+
+Our second function from liquidCNA, getNormalFitSegments() "Updates
+segment values by fitting a normal distribution to bins in the segment".
+So for each contiguous segment identified, for each time sample, they
+get the raw CN of all bins belonging to that segment, fit a normal
+distribution to the raw CNs, discard outliers, then refit the normal
+distribution, and gets the mean of the fitted norm dist. as the new
+updated segment.
+
+    getNormalFitSegments <- function(seg.sub, cn.df){
+        #initialise dataframe for standard deviations and means of segments
+        seg.sd <- data.frame(matrix(NA,nrow=nrow(seg.sub),ncol=ncol(cn.df)))
+        seg.av <- data.frame(matrix(NA,nrow=nrow(seg.sub),ncol=ncol(cn.df)))
+        
+        for(i in 1:nrow(seg.sub)){
+        #for each segment....
+        
+            for (j in 1:ncol(cn.df)){
+            #for each sample...
+            
+                x <- cn.df[seg.sub$start[i]:seg.sub$end[i],j] 
+                  #get the raw CN of bins in a segment
+                  
+                x.fit <- fitdist(x, "norm")
+                  #fit normal distribution on raw CNs by maximum likelihood
+                  #returns estimated mean and sd with std.error
+                  
+                x.sub <- x[abs(x-x.fit$estimate['mean'])<2.5*x.fit$estimate['sd']]
+                  #filter out outlier bins
+                  
+                x.fit2 <- fitdist(x.sub, "norm")
+                  #and iterate fitting of normal distribution
+                  
+                seg.av[i,j] <- x.fit2$estimate['mean']
+                seg.sd[i,j] <- x.fit2$estimate['sd']
+            }
+        }
+        return(list(seg.av=seg.av, seg.sd=seg.sd))
+    }
+
+```{r manipulate_segments 2}
+seg.cns <- seg.fit[[1]] #get the average of fitted normal dist. of raw bin CNs in the 
+names(seg.cns) <- names(seg.df)
+
+#and update seg.df by these new CNs
+seg.df.upd <- data.frame(matrix(NA, ncol=ncol(seg.df), nrow=nrow(seg.df)))
+names(seg.df.upd) <- names(seg.df); row.names(seg.df.upd) <- row.names(seg.df)
+
+for(i in 1:nrow(seg.sub)){
+  seg.df.upd[seg.sub$start[i]:seg.sub$end[i],] <- seg.cns[i,]
+}
+```
+
+# 2.0 Purity Estimation
+
+Parameters for purity estimation.
+
+```{r puritySetPARAM}
+w = c(0.8,1,1,0.15,0.05) #weights of different CN states
+maxCN=8 #assumed maximum CN 
+adjVec = c(0.5,0.6,0.8,0.9,1,1.2,1.3,1.5,1.8,2) #smoothing kernel adjustments
+pVec = seq(0.05, 0.5, by=0.005) #range of purity values to be evaluated
+```
+
+Estimated optimal purity values are those that minimise mean and median.
+Optimal purities stored in pHat.df.
+
+```{r estimating_optimal_purity }
+pHat.df <- data.frame(matrix(vector(),ncol=ncol(seg.df.upd), nrow=2))
+names(pHat.df) <- names(seg.df.upd)
+row.names(pHat.df) <- c('mean','median')
+
+#The plots show the error of the fit over the range of purity values 
+for(i in 1:ncol(seg.df.upd)){
+  #for each time sample...
+
+  x <- na.omit(seg.df.upd[,i]) #get rid of NA rows (i.e., segments with NAs)
+  pFits <- as.data.frame(sapply(adjVec,
+                                function(a) sapply(pVec,
+                                                   function(p) evalPurityDensity(p,w,a,x,maxCN))))
+  pFits$p <- pVec
+    #each row: the 1 purity value evaluated
+    #each column: 1 adjVec, a smoothing kernel adjustment
+    #each value: error for given purity/adjVec
+    
+  mins <- c(pVec[which.min(apply(pFits[,1:length(adjVec)],1,mean))],
+            pVec[which.min(apply(pFits[,1:length(adjVec)],1,median))])
+    #which row (purity) has minimum mean error and minimum median error?
+  
+  plF <- ggplot(melt(pFits,id='p'), aes(x=p, y=value)) + geom_point(size=2, alpha=0.3)+
+    theme_bw() +
+    geom_vline(xintercept = mins, linetype=c('dashed','dotted'), colour=c('red','blue')) +
+    labs(title=names(seg.df.upd)[i])
+  print(plF)
+  pHat.df[,names(seg.df.upd)[i]] <- mins
+}
+```
+
+### evalPurityDensity()
+
+Function numero 3, **evalPurityDensity()**. For a given purity and
+smoothing kernel adjustment, it outputs the summed squared distance
+between expected peaks and the nearest observed peaks.Things to note for
+this function:
+
+1.  This calculates the error from 5 expected CN states to the nearest
+    peak. This means even if the CN distribution has, for example, 10
+    peaks, it will output the sum of 5 errors. *What would we get if we
+    instead calculate from each observed peaks to the nearest expected
+    peak? Does that violate the underlying of integer CN states only?
+    What if there are 3 peaks, for example, of equal height between two
+    integers?*
+2.  We are only looking at 5 expected CN. How was this number chosen?
+3.  Default of nu = 7 & nd = 4.
+
+```{=html}
+<!-- -->
+```
+    function(p,w,a,x,maxCN=8,nu=7,nd=4){
+      #p is purity value being evaluated
+      #w is weight of different CN states
+      #a is each element of adjVec
+      #x are CN for all non-NA segments for one time sample
+      #nups: minimum number of increasing steps before a peak is reached default=7
+      #ndowns: minimum number of decreasing steps after the peak default=4
+      
+      seg.dist <- density(x[x>1.25 & x < 4.25], adjust=a)
+        #get rid of extreme CNs
+        #then kernel density est. with adjust smoothing bandwidth by value of adjVec
+      
+      z <- seg.dist$x[findpeaks(seg.dist$y,nups=nu, ndowns=nd)[,2]]
+        #second column gives the position/index where the maximum is reached
+        #thus, z is the peaks of CN values found by peak finding algorithm
+      
+      zhat2 <- sapply(1:length(w), function(i) min( ( ( 2 + p*(i-2) ) - z ) ^2 ) )
+        #(2 + p*(i-2)) is the expected peak for CN i #page 18 Eq 5.
+          #expectation under *assumption* that:
+            #C(A) take only integer values
+              #thereby, peaks being at regular intervals of p
+        #(( 2 + p*(i-2) ) -z ) ^2) = sqrd dist. of expected and observed peaks
+          #for each i, z is a vector ==> output to be vector
+          #each output element, is squared distance to each of the observed peaks
+          #minimum means, we only extract the error to the closest observed peak
+        #thus, zhat2 is a vector of squared distances 
+          #between each expected peaks and the nearest observed peaks.
+      
+      if (min(((2+p*(maxCN-2))-z)^2) < p){
+        zhat2 = zhat2+1
+      }
+      
+      return(sqrt(sum(zhat2*w)))
+        #the summed squared distance of observed and expected peaks
+          #zhat2 is the error for each peak (i.e. CN values)
+          #high ploidy is measured less accurately thus is given lower weight
+    }
+
+```{r estimated_purity, echo = FALSE}
+cat('Estimated purity values:\n')
+print(pHat.df)
+```
+
+# 3.0 Correct CN values by purity
+
+Correct segment CN values (stored in seg.df.upd and seg.cns) with the
+computed purities using equation:
+
+-   CN_corr = 1/p \* (CN-2) + 2
+
+```{r correct_w_purity}
+pVec <- as.numeric(pHat.df[1,,drop=T])
+seg.df.corr <- as.data.frame(t(t(seg.df.upd-2)*1/pVec)+2)
+seg.cns.corr <- as.data.frame(t(t(seg.cns-2)*1/pVec)+2)
+```
+
+Optional filtering of samples with low filtering. **Overall, samples in
+our data seems to have low purity. Would this need extra
+consideration?**
+
+```{r filter_low_purity}
+purity_threshold <- 0
+abovePurTh <- pVec >= purity_threshold
+seg.df.corr <- seg.df.corr[,abovePurTh]
+seg.cns.corr <- seg.cns.corr[,abovePurTh]
+```
+
+Plot purity-corrected segment distribution:
+
+```{r  plot_segment_distribution}
+ggplot(melt(as.data.frame(seg.df.corr)), aes(x=value, colour=variable)) +
+  geom_density(adjust=1) + theme_bw() +
+  scale_x_continuous(limits=c(0,8)) + geom_vline(xintercept = 1:6) +
+  labs(x='Purity-corrected segment CN',y='Density',colour='')
+```
+
+# 4.0 Derive sample order and subclonal segments
+
+## 4.1 Designate reference sample
+
+A reference sample is chosen and differences in CN (deltaCN) across
+samples are calculated. Reference sample was selected as "Sample 1" as
+it is the first time sample (date-wise) for every patient. **There is an
+assumption that first sample has the least/minimal subclones.**
+
+```{r choose_ref_sample}
+baseSample <- 'Sample1'
+seg.dcn <- seg.cns.corr - seg.cns.corr[,baseSample]
+seg.dcn.nonBase <- seg.dcn %>% select(-one_of(baseSample))
+```
+
+## Ordering: Permutation of remaining samples
+
+Choose samples to investigate (all non-base samples by default), then
+generate all possible permutations
+
+```{r ordering_permutation}
+colToUse <- names(seg.dcn.nonBase)
+
+nCol <- length(colToUse)
+seg.dcn.toOrder <- seg.dcn.nonBase[,colToUse]
+ordVec <- permutations(nCol,nCol,colToUse)
+```
+
+Set parameters to be used when *evaluating sample order and segment
+monotony*
+
+```{r ordering_parameters}
+filterMethod <- 'sd' #exclude clonal, sd < theta
+cutOffVec <- seq(0.025,0.5,by=0.005) #cut-off values for pre-filtering
+epsilon <- 0.05 #error margin for monotony
+```
+
+Diagnostic plot:
+
+-   plot1: proportion of subclonal segments
+-   plot2: total number of non-clonal (light blue) and subclonal (dark
+    blue) segments
+
+```{r diag_plot}
+fitInfo <- list()
+for (cutOff in cutOffVec){
+  seg.dcn.Eval <- filterSegmentRatios(seg.dcn.toOrder, cutOff, filterMethod, 0)
+  
+  best <- findBestOrder(seg.dcn.Eval, ordVec, epsilon, nCol, 0)
+  
+  fitInfo[[as.character(cutOff)]] <- best
+}
+
+fitInfo.df <- data.frame(cutOff = cutOffVec,
+                         maxFit = sapply(fitInfo, function(x) x$max),
+                         segsAboveCut = sapply(fitInfo, function(x) length(x$cons)),
+                         segsInOrder = sapply(fitInfo, function(x) max(sapply(x$segs, length))))
+
+#p1: proportion of subclonal segments
+p1 <- ggplot(fitInfo.df, aes(x=cutOff, y=maxFit)) + geom_line(size=2,colour='darkgreen') + theme_bw() +
+  labs(x='Clonal cut-off',y='Subclonal proportion (of non-clonal segments)')
+
+#p2: total number of non-clonal (light blue) and subclonal (dark blue) segments
+p2 <- ggplot(fitInfo.df, aes(x=cutOff, y=segsAboveCut)) + geom_line(size=2,colour='deepskyblue3') +
+  geom_line(aes(y=segsInOrder), size=2,colour='dodgerblue4') + theme_bw() +
+  labs(x='Clonal cut-off',y='Total number of non-clonal and subclonal segments')
+grid.arrange(p1,p2,nrow=1)
+```
+
+### filterSegmentRatios()
+
+Function number 4: **filterSegmentRatios.** The function determines
+segments to be clonal or non-clonal. Determines via cutoff value from
+cutoffVec. If sd \> cutoff, segment = non-clonal, else = clonal. Clonal
+segments are discarded.
+
+    filterSegmentRatios <- function(segs, cutOff, method, base=1){
+        segsExtended <- cbind(segs,base) # add a further column, corresponding to the baseline
+        if (!(method %in% c('minmax','sd'))){
+            # if method is none of the supported ones, return the original
+            print('Filtering criterion not recognised')
+            return(segs)
+        }
+        if (method=='minmax'){
+            # compute the minimal and maximal ratio in each segment, and return the ones that are far enough
+            thresh.min <- 1-cutOff
+            thresh.max <- 1+cutOff
+            rat.max <- apply(segsExtended/base,1,max)
+            rat.min <- apply(segsExtended/base,1,min)
+            return(segs[(rat.max>thresh.max | rat.min<thresh.min),])
+        }
+        if (method=='sd'){
+            # compute the standard deviation of each segment, and return the ones that are varied enough
+            rat.sd <- apply(segsExtended,1,sd)
+            return(segs[(rat.sd > cutOff),,drop=F])
+        }
+    }
+
+Function number 5: **findBestOrder**. Filtered non-clonal segments are
+inputted into the function. The function returns:
+$cons: row-names of all segments considered, *max: maximum fit gained, *$ord:
+order with the maximum fit, \$segs:segments monotone according to max
+fit
+
+    function(seg.ratios.Eval, ordVec, threshold, nCol, base=1){
+      #findBestOrder(seg.dcn.Eval, ordVec, epsilon, nCol, 0)
+        #so threhold here = epsilon
+      
+      if (nrow(seg.ratios.Eval)==0){
+        return(list(cons=row.names(seg.ratios.Eval),
+                    max=NA,
+                    ord=NA,
+                    segs=list(NULL)))
+      }
+      
+      if (nCol<2){
+        return(list(cons=row.names(seg.ratios.Eval),
+                    max=1,
+                    ord=ordVec[1,,drop=F],
+                    segs=list(row.names(seg.ratios.Eval))))
+      }
+      
+      fitTotal <- c()
+      fitSegments <- list()
+      
+      for (ind in 1:nrow(ordVec)){
+        ord <- ordVec[ind,]
+        #for each permutation of time point samples...
+        
+        fitCounts <- apply(seg.ratios.Eval[,ord],1,function(z) evalOrder(z,threshold,nCol, base))
+          #for each segment...
+          #evaluate if change in CN across order is monotone or not
+        
+        fitTotal[[ind]] <- sum(fitCounts)/(nrow(seg.ratios.Eval))
+        fitSegments[[ind]] <- row.names(seg.ratios.Eval)[fitCounts==1]
+      }
+      
+      # return the order with the best fit and segments that match it
+      inds <- which(fitTotal==max(unlist(fitTotal)))
+      return(list(cons=row.names(seg.ratios.Eval),
+                  max=max(unlist(fitTotal)),
+                  ord=ordVec[inds,,drop=F],
+                  segs=fitSegments[inds]))
+    }
+
+### evalOrder()
+
+Function number 6: **evalOrder**. Used in function findBestOrder(), this
+function evaluates whether the change in CN across given sample order
+for one segment is monotone or not. Returns boolean of monotone or not,
+evaluated with respect to default **epsilon = 0.05**. Epsilon of 0.05
+captures measurement noise. "We find that for typical lpWGS datasets,
+epsilon of 0.02\~0.05 works well to account for the underlying
+measurement noise."
+
+    # Evaluate a monotony of a sample order within a segment
+    # Input:
+    # - x = vector of segment CN values, ordered
+    # - th = error-threshold to allow for uncertain measurements of equal values <-- EPSILON
+    # - nCol = total number of samples observed and evaluated
+    # Returns: 1 or 0 depending if the segment is monotone ordered with threshold th
+    evalOrder <- function(x, th, nCol, base=1){
+      diff <- x - c(x[2:length(x)],base)
+        #diff in segment CN between one time point and the next (in the order)
+      if ( sum(x > base)>nCol/2 ){
+        #Eq 11a
+        orderFit <- sum(diff> -1*th)
+        
+      } else {
+        #Eq 11b
+        orderFit <- sum(diff< th)
+        
+        }
+      return(sum(orderFit==nCol))
+    }
+
+A typical cut-off \~0.1 is adequate. Too low or too high cut-off will
+select for noise. Ideal cut-off should have a reasonable number of
+subclonal segments (5-20), while maximising the subclonal proportion. We
+can automate choosing of optimal cut off.
+
+```{r opt_cut_off}
+minSegmentNumber <- 5
+recommendCutOff <- getCutOffAuto(fitInfo.df, minSegmentNumber)
+cat('Recommended cut-off is: ', recommendCutOff)
+```
+
+### getCutOffAuto()
+
+Function number 7: **getCutOffAuto**. Subset of fitInfo.df by number of
+segments in the order \> minSegmentNumber. And of those choose cutoff
+value with maxFit.
+
+    # Find the best (highest proportion of subclonal vs random segments) cutoff for clonal segments
+    # given a required minimal number of subclonal segments to recover (if known in advance)
+    # Input:
+    # - fitInfo.df = output of fitting at a range of clonal cutoff values
+    # - minNum = minimum number of subclonal (monotone) segments required to be returned
+    # Returns: cutoff value meeting requirement and maximising the fit
+    getCutOffAuto <- function(fitInfo.df, minNum){
+      x <- subset(fitInfo.df, segsInOrder > minNum)
+      if(nrow(x)>0){
+        c <- x$cutOff[which.max(x$maxFit)]
+      }else{
+        c <- fitInfo.df$cutOff[which.max(fitInfo.df$maxFit)]
+      }
+      return(c)
+    }
+
+plot DeltaCN for chosen cut off + ordering + segment classification:
+
+```{r deltaCN_across_order_plot}
+cutOff <- recommendCutOff
+fit <- fitInfo[[as.character(cutOff)]]
+
+for (ind in 1:nrow(fit$ord)){
+  seg.plot <- seg.dcn[,rev(c(fit$ord[ind,],baseSample))]
+  seg.plot$id <- row.names(seg.plot)
+  seg.plot$filtered <- seg.plot$id %in% fit$cons
+  seg.plot$order <- seg.plot$id %in% fit$segs[[ind]]
+  
+  p <- ggplot(melt(seg.plot, id=c('id','filtered','order')), aes(x=variable, y=value, group=id, colour=paste0(filtered,' | ',order))) +
+    geom_line(size=1.2, alpha=0.75) + theme_bw() +
+    scale_colour_manual(values=c('grey70','#487a8b','firebrick3'), labels=c('clonal','unstable','subclonal')) +
+    labs(x='',y='Change in segment CN (DeltaCN)',colour='Segment type')
+  print(p)
+}
+```
+
+if more than one sample order exists:
+
+```{r more_than_one_order}
+ordInd <- 1
+seg.dcn.toUse <- seg.dcn[fit$segs[[ordInd]],rev(fit$ord[ordInd,])]
+```
+
+# 5.0 Derive Subclonal Ratio
+
+RELATIVE subclonal-ratio is estimated by segment-by-segment comparison
+to the highest subclonal-ratio sample
+
+```{r calc_relative_subclone_ratio}
+topSample <- names(seg.dcn.toUse)[ncol(seg.dcn.toUse)]
+toEstimate <- setdiff(names(seg.dcn.toUse), c(topSample,baseSample))
+
+final.ratios <- estimateRSegmentRatio(seg.dcn.toUse, toEstimate, topSample, 1)
+
+final.medians <- aggregate(final.ratios$value, 
+                           by=list(final.ratios$variable), median)
+
+```
+
+### estimateRSegmentRatio()
+
+Function number 8 **estimateRSegmentRatio**. This function estimates
+relative subclonal ratio using dCN compared to the 'top' sample. 'Top'
+sample is the last sample in the chosen sample order. As sample order is
+chosen with assumption of monotonic increase in subclonality, last
+sample will ahve the highest relative subclonal-ratio (of 1). The
+function simply is the ratio of purity corrected CNs of segment:
+(non-top-sample / top-sample) for all each non-top sample for all
+segments.
+
+Input: \* - seg.ratios = normalised, purity-corrected segment CN matrix
+of only subclonal segments \* - toEstimate = vector of samples to be
+estimated, i.e. not baseline, discarded or maximal resistant ratio
+samples \* - topSamples = samples with maximal resistant ratio to use as
+denominator in estimating relative ratios \* - w = weights of segments
+to control reliability, can be kept at 1 if no prior assumptions
+
+    estimateRSegmentRatio <- function(seg.ratios, toEstimate, topSamples, w){
+        final.ratios <- data.frame(matrix(vector()))
+
+        for (samp in toEstimate){
+            tmp <- c()
+            for (top in topSamples){
+            
+                tmp <- c(tmp,(seg.ratios[,samp])/(seg.ratios[,top]))
+                  #simple ratio of purity corrected CNs of segment
+                  # = (non-top-sample / top-sample)
+                
+                }
+            final.ratios <- rbind(final.ratios, data.frame(value=tmp, variable=samp, weight=w))
+        
+        }
+        return(final.ratios)
+    }
+
+PLOT estimated relative ratios
+
+```{r plot_relative_subclone_ratios}
+final.medians$xpos <- 1:nrow(final.medians)
+
+ggplot(final.ratios, aes(y=value, x=variable, weight=1)) + geom_violin(fill='firebrick3',alpha=0.2) +
+  theme_bw() + scale_y_continuous(limits=c(0,1.2)) +
+  geom_jitter(width=0.1, height=0, colour='firebrick3', size=2, alpha=0.6) +
+  #geom_point(data=true.df, aes(x=V3, y=V2), colour='firebrick3', size=3) +
+  geom_segment(data=final.medians,aes(x=xpos-0.15,xend=xpos+0.15,y=x,yend=x), size=1.5) +
+  labs(x='',y=paste0('Subclonal-ratio compared to ',topSample))
+```
+
+Package this into final results table of median relative ratio values.
+
+```{r generate_final_results}
+final.results <- aggregate(final.ratios$value, by=list(final.ratios$variable), median)
+names(final.results) <- c('time','relratio')
+final.results$time <- as.character(final.results$time)
+final.results[nrow(final.results)+1,] <- c(topSample, 1)
+
+```
+
+# 6.0 Derive Absolute Ratio
+
+```{r absolute}
+final.results$rat <- NA
+final.results$rat_sd <- NA
+for (samp in final.results$time){
+    final.results <- estimateRGaussianFit(seg.dcn.toUse, samp, final.results, 3)
+}
+final.results$rat_sd <- as.numeric(final.results$rat_sd)
+
+```
+
+### estimateRGaussianFit()
+
+"Estimate the resistant ratio of a sample by fitting a Gaussian mixture
+to relative subclonal segment CNs. The shared mean parameter defines the
+absolute ratio."
+
+"To also derive the variance of the estimate, we can provide the number
+of distinct DeltaCN states the segment values are distributed over, e.g.
+3 (-1, 1, 2) - **default is 2**."
+
+Input:
+
+seg.rel.toUse = normalised, purity-corrected segment CN of subclonal segments only
+
+topSample = sample to be investigated - use in loop to evaluate for all samples
+
+final.medians = output data frame with column "time' denoting the sample and "rat" denoting the estimated ratio and "rat_sd" its variance
+
+(optional) nStates = number of DeltaCN states presented in the data, e.g. DCN={-1,1,2} -> nStates=3; this is used to compute the variance of the estimate
+
+Returns updated final.medians containing values for ratio and variance
+of the estimate
+
+normalmixEM: https://www.r-bloggers.com/2011/08/fitting-mixture-distributions-with-the-r-package-mixtools/
+Parameters to investigate for nomalmixEM:
+
+* sigma
++ sigma depends on the number of segments used and that depends on how many states they were distributed across
+* lambda
+* mu
++ i.e., DCNs investigated
+```
+estimateRGaussianFit <- function(seg.rel.toUse, topSample, 
+                                final.medians, gaussSigma=0.1, nStates=2, 
+                                lambdaOverwrite=0.2, verbose=F){
+    seg.top <- seg.rel.toUse[,topSample]
+    start <- mean(seg.top[seg.top<0])
+      #average of deltaCNs of top sample that are negative
+      
+    if (is.nan(start)){
+        # estimate the initial value for fitting from segments with DCN between 0 and 1
+      start <- -1* mean(seg.top[seg.top>0 & seg.top<1])
+  }
+  if (is.nan(start)){ 
+  # if no starting point can be found, start from a default of 25%
+      start <- -0.25
+  }
+  
+  # By default the following DCN values are used: -2, -1, 1, 2, 3
+  mixfit <- normalmixEM(as.numeric(seg.top),
+                        lambda=lambdaOverwrite,
+                        mean.constr = c("2a","a","-a","-2a","-3a"),
+                        mu=c(2,1,-1,-2,-3)*start,sigma=gaussSigma)
+  # only return the obtained value if converged in less than 800 iterations
+  if (length(mixfit$all.loglik)<800){
+      final.medians$rat[final.medians$time==topSample] <- -1*(mixfit$mu[2])
+      #sigma depends on the number of segments used and that depends on how many states they were distributed across
+      final.medians$rat_sd[final.medians$time==topSample] <- (mixfit$sigma[1])/sqrt(nrow(seg.rel.toUse)/nStates)
+  }
+  if (verbose){
+  	print(mixfit$lambda)
+  }
+  return(final.medians)
+}
+```
+
+```{r plot absolute}
+ggplot(final.results, aes(x=as.factor(time), y=rat)) +
+    geom_bar(stat='identity',colour='black',fill='firebrick3',alpha=0.8, width=0.8) +
+    geom_errorbar(aes(ymin=(rat-(1.96*rat_sd))*((rat-(1.96*rat_sd))>0), ymax=rat+(1.96*rat_sd)),
+                  width=.1) +
+    theme_bw() + theme(axis.title.x=element_blank()) +
+    labs(x='Sample', y='Subclonal-ratio')
+```
+
+```{r out_final_results}
+final.results[nrow(final.results)+1,] <- c(baseSample, 0,0,0)
+final.results$purity_mean <- as.numeric(pHat.df[1,match(final.results$time, 
+                                                        names(pHat.df))])
+final.results$purity_median <- as.numeric(pHat.df[2,match(final.results$time, 
+                                                          names(pHat.df))])
+
+cat('Final result table:\n'); print(final.results)
+```
