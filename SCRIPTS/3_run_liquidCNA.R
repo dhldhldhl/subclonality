@@ -273,7 +273,7 @@ run_liquidCNA <- function(p_num){
 
 liquidCNA_results <- vector(mode = "list", length = 80)
 
-for(patient_x in 1:1){
+for(patient_x in 1:80){
   tryCatch({
     liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
   }, error=function(e){cat("ERROR at:", patient_x, "\n")})
