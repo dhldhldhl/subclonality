@@ -26,11 +26,12 @@ run_liquidCNA <- function(p_num){
   cn.df <- as.data.frame(t(t(cn.df)/reNorm)*2)
   
   #Plot the CN distribution of each sample to gain a quick overview
-  ggplot(reshape2::melt(seg.df), aes(x=value,y=..scaled.., colour=variable)) +
+  explore_plot <- ggplot(reshape2::melt(seg.df), aes(x=value,y=..scaled.., colour=variable)) +
     geom_density(adjust=1) +
     theme_bw() + scale_x_continuous(limits=c(0.5, 5)) +
     labs(x='Segment copy number',y='Density',colour='') + 
     ggtitle(paste0('Patient ', patient_ids[p_num]))
+  print(explore_plot)
   
   #generate a dataframe of ensemble segments
   #contiguous sections of bins that are constant in ALL samples
@@ -111,11 +112,12 @@ run_liquidCNA <- function(p_num){
   # seg.cns.corr <- seg.cns.corr[,abovePurTh]
   
   #Plot purity-corrected segment distribution
-  ggplot(melt(as.data.frame(seg.df.corr)), aes(x=value, colour=variable)) +
+  purity_plot <- ggplot(melt(as.data.frame(seg.df.corr)), aes(x=value, colour=variable)) +
     geom_density(adjust=1) + theme_bw() +
     scale_x_continuous(limits=c(0,8)) + geom_vline(xintercept = 1:6) +
     labs(x='Purity-corrected segment CN',y='Density',colour='') + 
     ggtitle(paste0('Patient ', patient_ids[p_num]))
+  print(purity_plot)
   
   #Designate reference sample
   #& calculate dCN
@@ -271,9 +273,9 @@ run_liquidCNA <- function(p_num){
 
 liquidCNA_results <- vector(mode = "list", length = 80)
 
-for(patient_x in 1:80){
+for(patient_x in 1:1){
   tryCatch({
-    liquidCNA_results[[patient_x]] <- get_purity(patient_x)
+    liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
   }, error=function(e){cat("ERROR at:", patient_x, "\n")})
 }
 
@@ -281,3 +283,5 @@ names(liquidCNA_results) <- paste0("patient_", patient_ids)
 
 save(liquidCNA_results, 
      file = "../DATA/liquidCNA_results.RData")
+
+
