@@ -465,3 +465,67 @@ Loaded bin annotations for genome ‘hg38’, bin size 500 kbp, and experiment t
 [69] "readCounts saved" "readCounts saved" "readCounts saved" "readCounts saved"
 [73] "readCounts saved" "readCounts saved" "readCounts saved" "readCounts saved"
 [77] "readCounts saved" "readCounts saved" "readCounts saved" "readCounts saved"
+mixtools package, version 1.2.0, Released 2020-02-05
+This package is based upon work supported by the National Science Foundation under Grant No. SES-0518772.
+
+Loading required package: MASS
+Loading required package: survival
+
+Attaching package: ‘dplyr’
+
+The following object is masked from ‘package:MASS’:
+
+    select
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+Loading required package: gtools
+
+Attaching package: ‘gtools’
+
+The following object is masked from ‘package:mixtools’:
+
+    ddirichlet
+
+The following object is masked from ‘package:pracma’:
+
+    logit
+
+
+Attaching package: ‘gridExtra’
+
+The following object is masked from ‘package:dplyr’:
+
+    combine
+
+Loading required package: usethis
+ℹ SHA-1 hash of file is 856e88a5ce93fe0d447013869848a9b4533c6a4e
+No id variables; using all as measure variables
+Patient 339 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.055number of iterations= 101 
+number of iterations= 79 
+No id variables; using all as measure variables
+Patient 388 | Total number of segments retained:  37No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 57 
+number of iterations= 62 
+number of iterations= 341 
+No id variables; using all as measure variables
+Patient 392 | Total number of segments retained:  42No id variables; using all as measure variables
+Recommended cut-off is:  0.46number of iterations= 17 
+number of iterations= 74 
+number of iterations= 50 
+number of iterations= 36 
+No id variables; using all as measure variables
+Patient 715 | Total number of segments retained:  27No id variables; using all as measure variables
+Recommended cut-off is:  0.06WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+No id variables; using all as measure variables
+Patient 840 | Total number of segments retained:  59No id variables; using all as measure variables
