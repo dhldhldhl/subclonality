@@ -5,8 +5,8 @@ source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_es
 
 ################################################################################
 #setwd
-#setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
-setwd("/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl/subclonality")
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+#setwd("/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl/subclonality")
 load("../DATA/bam_by_patient.RData")
 
 run_liquidCNA <- function(p_num){
@@ -264,24 +264,33 @@ run_liquidCNA <- function(p_num){
   ############# Final results ##############
   ##########################################
   final.results[nrow(final.results)+1,] <- c(baseSample, 0,0,0)
-  final.results$purity_mean <- as.numeric(pHat.df[1,match(final.results$time, 
+  final.results$purity_mean <- as.character(pHat.df[1,match(final.results$time, 
                                                           names(pHat.df))])
-  final.results$purity_median <- as.numeric(pHat.df[2,match(final.results$time, 
+  final.results$purity_median <- as.character(pHat.df[2,match(final.results$time, 
                                                             names(pHat.df))])
   return(final.results)
 }
 
-liquidCNA_results <- vector(mode = "list", length = 80)
+# liquidCNA_results <- vector(mode = "list", length = 80)
+# 
+# for(patient_x in 1:80){
+#   tryCatch({
+#     cat("Starting patient :", patient_x, "\n")
+#     liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
+#   }, error=function(e){cat("ERROR at:", patient_x, "\n")})
+# }
+# 
+# names(liquidCNA_results) <- paste0("patient_", patient_ids)
 
-for(patient_x in 1:80){
-  tryCatch({
-    liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
-  }, error=function(e){cat("ERROR at:", patient_x, "\n")})
-}
+p_vec <- 1:80
+liquidCNA_results <- sapply(p_vec, function(p_num) run_liquidCNA(p_num), simplify = F)
 
-names(liquidCNA_results) <- paste0("patient_", patient_ids)
 
 save(liquidCNA_results, 
      file = "../DATA/liquidCNA_results.RData")
 
 
+################################################################################
+
+# load("../DATA/liquidCNA_results.RData")
+# liquidCNA_results
