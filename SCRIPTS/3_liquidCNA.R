@@ -13,7 +13,7 @@ setwd(wd)
 
 #read outputs of QDNAseq
 load("../DATA/bam_by_patient.RData")
-p_num <- 50
+p_num <- 5
 
 seg.df <- read.delim(paste0("../DATA/2_QDNA_CNout/segment_", patient_ids[p_num], ".txt"))
 cn.df <- read.delim(paste0("../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p_num], ".txt"))
@@ -31,11 +31,12 @@ seg.df <- as.data.frame(t(t(seg.df)/reNorm)*2)
 cn.df <- as.data.frame(t(t(cn.df)/reNorm)*2)
 
 #Plot the CN distribution of each sample to gain a quick overview
-ggplot(reshape2::melt(seg.df), aes(x=value,y=..scaled.., colour=variable)) +
+explore_plot <- ggplot(reshape2::melt(seg.df), aes(x=value,y=..scaled.., colour=variable)) +
   geom_density(adjust=1) +
   theme_bw() + scale_x_continuous(limits=c(0.5, 5)) +
   labs(x='Segment copy number',y='Density',colour='') + 
   ggtitle(paste0('Patient ', patient_ids[p_num]))
+print(explore_plot)
 
 #generate a dataframe of ensemble segments
 #contiguous sections of bins that are constant in ALL samples
@@ -110,17 +111,20 @@ seg.df.corr <- as.data.frame(t(t(seg.df.upd-2)*1/pVec)+2)
 seg.cns.corr <- as.data.frame(t(t(seg.cns-2)*1/pVec)+2)
 
 #remove low purity samples (optional)
-# purity_threshold <- 0.05
-# abovePurTh <- pVec >= purity_threshold
-# seg.df.corr <- seg.df.corr[,abovePurTh]
-# seg.cns.corr <- seg.cns.corr[,abovePurTh]
+if( length(pVec) > 6 ){
+  purity_threshold <- 0.1
+  abovePurTh <- pVec >= purity_threshold
+  seg.df.corr <- seg.df.corr[,abovePurTh]
+  seg.cns.corr <- seg.cns.corr[,abovePurTh]
+}
 
 #Plot purity-corrected segment distribution
-ggplot(melt(as.data.frame(seg.df.corr)), aes(x=value, colour=variable)) +
+purity_plot <- ggplot(melt(as.data.frame(seg.df.corr)), aes(x=value, colour=variable)) +
   geom_density(adjust=1) + theme_bw() +
   scale_x_continuous(limits=c(0,8)) + geom_vline(xintercept = 1:6) +
   labs(x='Purity-corrected segment CN',y='Density',colour='') + 
   ggtitle(paste0('Patient ', patient_ids[p_num]))
+print(purity_plot)
 
 #Designate reference sample
 #& calculate dCN
@@ -134,6 +138,18 @@ colToUse <- names(seg.dcn.nonBase)
 nCol <- length(colToUse)
 seg.dcn.toOrder <- seg.dcn.nonBase[,colToUse]
 ordVec <- permutations(nCol,nCol,colToUse)
+
+#Permutation is too long
+if( nrow(ordVec) > 1000 ){
+  
+  chrono <- which(apply(ordVec, 1, function(x) identical(x, colToUse)))
+  nonchrono <- (1:nrow(ordVec))[-chrono]
+  rows <- sample(nonchrono, 1000, replace = F)
+  subOrdVec <- ordVec[rows,]
+  subOrdVec <- rbind(subOrdVec, ordVec[chrono,])
+  ordVec <- subOrdVec
+  
+}
 
 #Initial filtering to find best sample order 
 #Set parameters to be used when evaluating sample order and segment monotony
@@ -193,6 +209,7 @@ cutOff <- recommendCutOff
 fit <- fitInfo[[as.character(cutOff)]]
 
 for (ind in 1:nrow(fit$ord)){
+  print(ind)
   seg.plot <- seg.dcn[,rev(c(fit$ord[ind,],baseSample))]
   seg.plot$id <- row.names(seg.plot)
   seg.plot$filtered <- seg.plot$id %in% fit$cons

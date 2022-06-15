@@ -428,11 +428,15 @@ segments are discarded.
         }
     }
 
+### findBestOrder()
+
 Function number 5: **findBestOrder**. Filtered non-clonal segments are
 inputted into the function. The function returns:
-$cons: row-names of all segments considered, *max: maximum fit gained, *$ord:
-order with the maximum fit, \$segs:segments monotone according to max
-fit
+
+*cons: row-names of all segments considered
+*max: maximum fit gained
+*ord: order with the maximum fit, 
+*segs:segments monotone according to max fit
 
     function(seg.ratios.Eval, ordVec, threshold, nCol, base=1){
       #findBestOrder(seg.dcn.Eval, ordVec, epsilon, nCol, 0)

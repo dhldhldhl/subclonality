@@ -105,11 +105,13 @@ run_liquidCNA <- function(p_num){
   seg.df.corr <- as.data.frame(t(t(seg.df.upd-2)*1/pVec)+2)
   seg.cns.corr <- as.data.frame(t(t(seg.cns-2)*1/pVec)+2)
   
-  #remove low purity samples (optional)
-  # purity_threshold <- 0.05
-  # abovePurTh <- pVec >= purity_threshold
-  # seg.df.corr <- seg.df.corr[,abovePurTh]
-  # seg.cns.corr <- seg.cns.corr[,abovePurTh]
+  #remove low purity samples if number of number of samples is many
+  if( length(pVec) > 6 ){
+    purity_threshold <- 0.1
+    abovePurTh <- pVec >= purity_threshold
+    seg.df.corr <- seg.df.corr[,abovePurTh]
+    seg.cns.corr <- seg.cns.corr[,abovePurTh]
+  }
   
   #Plot purity-corrected segment distribution
   purity_plot <- ggplot(melt(as.data.frame(seg.df.corr)), aes(x=value, colour=variable)) +
@@ -131,6 +133,18 @@ run_liquidCNA <- function(p_num){
   nCol <- length(colToUse)
   seg.dcn.toOrder <- seg.dcn.nonBase[,colToUse]
   ordVec <- permutations(nCol,nCol,colToUse)
+  
+  #Permutation is too long
+  if( nrow(ordVec) > 1000 ){
+    
+    chrono <- which(apply(ordVec, 1, function(x) identical(x, colToUse)))
+    nonchrono <- (1:nrow(ordVec))[-chrono]
+    rows <- sample(nonchrono, 1000, replace = F)
+    subOrdVec <- ordVec[rows,]
+    subOrdVec <- rbind(subOrdVec, ordVec[chrono,])
+    ordVec <- subOrdVec
+    
+  }
   
   #Initial filtering to find best sample order 
   #Set parameters to be used when evaluating sample order and segment monotony
@@ -271,19 +285,19 @@ run_liquidCNA <- function(p_num){
   return(final.results)
 }
 
-# liquidCNA_results <- vector(mode = "list", length = 80)
-# 
-# for(patient_x in 1:80){
-#   tryCatch({
-#     cat("Starting patient :", patient_x, "\n")
-#     liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
-#   }, error=function(e){cat("ERROR at:", patient_x, "\n")})
-# }
-# 
-# names(liquidCNA_results) <- paste0("patient_", patient_ids)
+liquidCNA_results <- vector(mode = "list", length = 80)
 
-p_vec <- 1:80
-liquidCNA_results <- sapply(p_vec, function(p_num) run_liquidCNA(p_num), simplify = F)
+for(patient_x in 1:80){
+  tryCatch({
+    cat("Starting patient :", patient_x, "\n")
+    liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
+  }, error=function(e){cat("ERROR at:", patient_x, "\n")})
+}
+
+names(liquidCNA_results) <- paste0("patient_", patient_ids)
+
+# p_vec <- 1:80
+# liquidCNA_results <- sapply(p_vec, function(p_num) run_liquidCNA(p_num), simplify = F)
 
 
 save(liquidCNA_results, 
