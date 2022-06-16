@@ -1,0 +1,466 @@
+Warning message:
+package ‘pracma’ was built under R version 4.1.2 
+Warning message:
+package ‘ggplot2’ was built under R version 4.1.2 
+mixtools package, version 1.2.0, Released 2020-02-05
+This package is based upon work supported by the National Science Foundation under Grant No. SES-0518772.
+
+Loading required package: MASS
+Loading required package: survival
+Warning message:
+package ‘fitdistrplus’ was built under R version 4.1.2 
+
+Attaching package: ‘dplyr’
+
+The following object is masked from ‘package:MASS’:
+
+    select
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+Warning message:
+package ‘dplyr’ was built under R version 4.1.2 
+Warning message:
+package ‘QDNAseq’ was built under R version 4.1.1 
+Loading required package: gtools
+
+Attaching package: ‘gtools’
+
+The following object is masked from ‘package:mixtools’:
+
+    ddirichlet
+
+The following object is masked from ‘package:pracma’:
+
+    logit
+
+
+Attaching package: ‘gridExtra’
+
+The following object is masked from ‘package:dplyr’:
+
+    combine
+
+Loading required package: usethis
+ℹ SHA-1 hash of file is 856e88a5ce93fe0d447013869848a9b4533c6a4e
+Starting patient : 1 
+No id variables; using all as measure variables
+Patient 339 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.055number of iterations= 101 
+number of iterations= 79 
+Starting patient : 2 
+No id variables; using all as measure variables
+Patient 388 | Total number of segments retained:  37No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 57 
+number of iterations= 62 
+number of iterations= 341 
+Starting patient : 3 
+No id variables; using all as measure variables
+Patient 392 | Total number of segments retained:  42No id variables; using all as measure variables
+Recommended cut-off is:  0.46number of iterations= 17 
+number of iterations= 74 
+number of iterations= 50 
+number of iterations= 36 
+Starting patient : 4 
+No id variables; using all as measure variables
+Patient 715 | Total number of segments retained:  27No id variables; using all as measure variables
+Recommended cut-off is:  0.06WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+Starting patient : 5 
+No id variables; using all as measure variables
+Patient 840 | Total number of segments retained:  59No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 139 
+number of iterations= 177 
+number of iterations= 243 
+number of iterations= 302 
+Starting patient : 6 
+No id variables; using all as measure variables
+Patient 957 | Total number of segments retained:  26No id variables; using all as measure variables
+ERROR at: 6 
+Starting patient : 7 
+No id variables; using all as measure variables
+Patient 1005 | Total number of segments retained:  54No id variables; using all as measure variables
+Recommended cut-off is:  0.335number of iterations= 208 
+number of iterations= 21 
+Starting patient : 8 
+No id variables; using all as measure variables
+Patient 1333 | Total number of segments retained:  22No id variables; using all as measure variables
+ERROR at: 8 
+Starting patient : 9 
+No id variables; using all as measure variables
+Patient 1439 | Total number of segments retained:  22ERROR at: 9 
+Starting patient : 10 
+No id variables; using all as measure variables
+Patient 1483 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 150 
+number of iterations= 110 
+Starting patient : 11 
+No id variables; using all as measure variables
+Patient 2000 | Total number of segments retained:  29No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 530 
+number of iterations= 174 
+number of iterations= 174 
+Starting patient : 12 
+No id variables; using all as measure variables
+Patient 2013 | Total number of segments retained:  44No id variables; using all as measure variables
+Recommended cut-off is:  0.36number of iterations= 390 
+number of iterations= 408 
+Starting patient : 13 
+No id variables; using all as measure variables
+Patient 2227 | Total number of segments retained:  34No id variables; using all as measure variables
+ERROR at: 13 
+Starting patient : 14 
+No id variables; using all as measure variables
+Patient 2280 | Total number of segments retained:  24No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 108 
+number of iterations= 110 
+number of iterations= 9 
+Starting patient : 15 
+No id variables; using all as measure variables
+Patient 2303 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.1number of iterations= 416 
+number of iterations= 42 
+Starting patient : 16 
+No id variables; using all as measure variables
+Patient 2320 | Total number of segments retained:  24No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 417 
+number of iterations= 70 
+Starting patient : 17 
+No id variables; using all as measure variables
+Patient 2459 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.05number of iterations= 292 
+number of iterations= 59 
+Starting patient : 18 
+No id variables; using all as measure variables
+Patient 2484 | Total number of segments retained:  29No id variables; using all as measure variables
+Recommended cut-off is:  0.295number of iterations= 96 
+number of iterations= 103 
+number of iterations= 291 
+Starting patient : 19 
+No id variables; using all as measure variables
+Patient 2487 | Total number of segments retained:  37No id variables; using all as measure variables
+ERROR at: 19 
+Starting patient : 20 
+No id variables; using all as measure variables
+Patient 2499 | Total number of segments retained:  44No id variables; using all as measure variables
+Recommended cut-off is:  0.085WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+number of iterations= 710 
+Starting patient : 21 
+No id variables; using all as measure variables
+Patient 2511 | Total number of segments retained:  23No id variables; using all as measure variables
+ERROR at: 21 
+Starting patient : 22 
+No id variables; using all as measure variables
+Patient 2587 | Total number of segments retained:  26No id variables; using all as measure variables
+Recommended cut-off is:  0.165WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+Starting patient : 23 
+No id variables; using all as measure variables
+Patient 2684 | Total number of segments retained:  29No id variables; using all as measure variables
+Recommended cut-off is:  0.15number of iterations= 296 
+number of iterations= 225 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+Starting patient : 24 
+No id variables; using all as measure variables
+Patient 2716 | Total number of segments retained:  42No id variables; using all as measure variables
+Recommended cut-off is:  0.355number of iterations= 76 
+number of iterations= 480 
+number of iterations= 65 
+Starting patient : 25 
+No id variables; using all as measure variables
+Patient 2734 | Total number of segments retained:  79No id variables; using all as measure variables
+Recommended cut-off is:  0.35number of iterations= 371 
+number of iterations= 71 
+Starting patient : 26 
+No id variables; using all as measure variables
+Patient 2740 | Total number of segments retained:  42No id variables; using all as measure variables
+Recommended cut-off is:  0.5number of iterations= 46 
+number of iterations= 39 
+number of iterations= 64 
+number of iterations= 11 
+Starting patient : 27 
+No id variables; using all as measure variables
+Patient 2750 | Total number of segments retained:  27No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 513 
+number of iterations= 979 
+Starting patient : 28 
+No id variables; using all as measure variables
+Patient 2757 | Total number of segments retained:  44No id variables; using all as measure variables
+Recommended cut-off is:  0.495number of iterations= 186 
+number of iterations= 18 
+Starting patient : 29 
+No id variables; using all as measure variables
+Patient 2759 | Total number of segments retained:  48No id variables; using all as measure variables
+ERROR at: 29 
+Starting patient : 30 
+No id variables; using all as measure variables
+Patient 2788 | Total number of segments retained:  36No id variables; using all as measure variables
+ERROR at: 30 
+Starting patient : 31 
+No id variables; using all as measure variables
+Patient 2789 | Total number of segments retained:  36ERROR at: 31 
+Starting patient : 32 
+No id variables; using all as measure variables
+Patient 2797 | Total number of segments retained:  73No id variables; using all as measure variables
+ERROR at: 32 
+Starting patient : 33 
+No id variables; using all as measure variables
+Patient 2802 | Total number of segments retained:  28No id variables; using all as measure variables
+ERROR at: 33 
+Starting patient : 34 
+No id variables; using all as measure variables
+Patient 2804 | Total number of segments retained:  68No id variables; using all as measure variables
+ERROR at: 34 
+Starting patient : 35 
+No id variables; using all as measure variables
+Patient 2806 | Total number of segments retained:  43No id variables; using all as measure variables
+Recommended cut-off is:  0.38number of iterations= 69 
+number of iterations= 56 
+Starting patient : 36 
+No id variables; using all as measure variables
+Patient 2825 | Total number of segments retained:  26No id variables; using all as measure variables
+ERROR at: 36 
+Starting patient : 37 
+No id variables; using all as measure variables
+Patient 2879 | Total number of segments retained:  29No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 941 
+number of iterations= 317 
+Starting patient : 38 
+No id variables; using all as measure variables
+Patient 2880 | Total number of segments retained:  22No id variables; using all as measure variables
+ERROR at: 38 
+Starting patient : 39 
+No id variables; using all as measure variables
+Patient 2948 | Total number of segments retained:  74No id variables; using all as measure variables
+ERROR at: 39 
+Starting patient : 40 
+No id variables; using all as measure variables
+Patient 2977 | Total number of segments retained:  26No id variables; using all as measure variables
+Recommended cut-off is:  0.12number of iterations= 145 
+number of iterations= 71 
+Starting patient : 41 
+No id variables; using all as measure variables
+Patient 2978 | Total number of segments retained:  35No id variables; using all as measure variables
+ERROR at: 41 
+Starting patient : 42 
+No id variables; using all as measure variables
+Patient 2995 | Total number of segments retained:  25No id variables; using all as measure variables
+Recommended cut-off is:  0.05number of iterations= 160 
+number of iterations= 76 
+Starting patient : 43 
+No id variables; using all as measure variables
+Patient 3046 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.06WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+number of iterations= 60 
+Starting patient : 44 
+No id variables; using all as measure variables
+Patient 3057 | Total number of segments retained:  36No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 48 
+number of iterations= 68 
+number of iterations= 95 
+number of iterations= 59 
+number of iterations= 52 
+Starting patient : 45 
+No id variables; using all as measure variables
+Patient 3068 | Total number of segments retained:  46ERROR at: 45 
+Starting patient : 46 
+No id variables; using all as measure variables
+Patient 3080 | Total number of segments retained:  45No id variables; using all as measure variables
+Recommended cut-off is:  0.355number of iterations= 10 
+number of iterations= 8 
+Starting patient : 47 
+No id variables; using all as measure variables
+Patient 3117 | Total number of segments retained:  42No id variables; using all as measure variables
+Recommended cut-off is:  0.225WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+number of iterations= 283 
+Starting patient : 48 
+No id variables; using all as measure variables
+Patient 3130 | Total number of segments retained:  25No id variables; using all as measure variables
+Recommended cut-off is:  0.04number of iterations= 28 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+Starting patient : 49 
+No id variables; using all as measure variables
+Patient 3134 | Total number of segments retained:  42No id variables; using all as measure variables
+Recommended cut-off is:  0.4WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+number of iterations= 25 
+Starting patient : 50 
+No id variables; using all as measure variables
+Patient 3157 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.025WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+Starting patient : 51 
+No id variables; using all as measure variables
+Patient 3178 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.285One of the variances is going to zero;  trying new starting values.
+ERROR at: 51 
+Starting patient : 52 
+No id variables; using all as measure variables
+Patient 3187 | Total number of segments retained:  27No id variables; using all as measure variables
+Recommended cut-off is:  0.105number of iterations= 43 
+number of iterations= 473 
+number of iterations= 342 
+Starting patient : 53 
+No id variables; using all as measure variables
+Patient 3188 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.485number of iterations= 10 
+number of iterations= 28 
+number of iterations= 8 
+Starting patient : 54 
+No id variables; using all as measure variables
+Patient 3190 | Total number of segments retained:  23No id variables; using all as measure variables
+Recommended cut-off is:  0.055number of iterations= 503 
+number of iterations= 526 
+Starting patient : 55 
+No id variables; using all as measure variables
+Patient 3240 | Total number of segments retained:  53No id variables; using all as measure variables
+ERROR at: 55 
+Starting patient : 56 
+No id variables; using all as measure variables
+Patient 3269 | Total number of segments retained:  56No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 768 
+number of iterations= 144 
+Starting patient : 57 
+No id variables; using all as measure variables
+Patient 3294 | Total number of segments retained:  44No id variables; using all as measure variables
+Recommended cut-off is:  0.13number of iterations= 482 
+number of iterations= 803 
+number of iterations= 546 
+Starting patient : 58 
+No id variables; using all as measure variables
+Patient 3301 | Total number of segments retained:  64No id variables; using all as measure variables
+Recommended cut-off is:  0.31number of iterations= 247 
+number of iterations= 260 
+Starting patient : 59 
+No id variables; using all as measure variables
+Patient 3336 | Total number of segments retained:  28No id variables; using all as measure variables
+ERROR at: 59 
+Starting patient : 60 
+No id variables; using all as measure variables
+Patient 3355 | Total number of segments retained:  27No id variables; using all as measure variables
+Recommended cut-off is:  0.235WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+number of iterations= 29 
+Starting patient : 61 
+No id variables; using all as measure variables
+Patient 3357 | Total number of segments retained:  38No id variables; using all as measure variables
+ERROR at: 61 
+Starting patient : 62 
+No id variables; using all as measure variables
+Patient 3391 | Total number of segments retained:  22No id variables; using all as measure variables
+ERROR at: 62 
+Starting patient : 63 
+No id variables; using all as measure variables
+Patient 3439 | Total number of segments retained:  23No id variables; using all as measure variables
+Recommended cut-off is:  0.465number of iterations= 29 
+number of iterations= 21 
+number of iterations= 24 
+Starting patient : 64 
+No id variables; using all as measure variables
+Patient 3441 | Total number of segments retained:  23No id variables; using all as measure variables
+Recommended cut-off is:  0.295One of the variances is going to zero;  trying new starting values.
+ERROR at: 64 
+Starting patient : 65 
+No id variables; using all as measure variables
+Patient 3466 | Total number of segments retained:  47No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 84 
+number of iterations= 38 
+number of iterations= 272 
+Starting patient : 66 
+No id variables; using all as measure variables
+Patient 3470 | Total number of segments retained:  27No id variables; using all as measure variables
+Recommended cut-off is:  0.34number of iterations= 39 
+number of iterations= 646 
+Starting patient : 67 
+No id variables; using all as measure variables
+Patient 3488 | Total number of segments retained:  27No id variables; using all as measure variables
+Recommended cut-off is:  0.395number of iterations= 14 
+number of iterations= 13 
+number of iterations= 293 
+number of iterations= 24 
+Starting patient : 68 
+No id variables; using all as measure variables
+Patient 3516 | Total number of segments retained:  66No id variables; using all as measure variables
+ERROR at: 68 
+Starting patient : 69 
+No id variables; using all as measure variables
+Patient 3521 | Total number of segments retained:  52No id variables; using all as measure variables
+ERROR at: 69 
+Starting patient : 70 
+No id variables; using all as measure variables
+Patient 3546 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.235number of iterations= 84 
+number of iterations= 34 
+Starting patient : 71 
+No id variables; using all as measure variables
+Patient 3547 | Total number of segments retained:  39No id variables; using all as measure variables
+ERROR at: 71 
+Starting patient : 72 
+No id variables; using all as measure variables
+Patient 3557 | Total number of segments retained:  26No id variables; using all as measure variables
+Recommended cut-off is:  0.06number of iterations= 510 
+number of iterations= 232 
+Starting patient : 73 
+No id variables; using all as measure variables
+Patient 3611 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.27number of iterations= 151 
+number of iterations= 89 
+Starting patient : 74 
+No id variables; using all as measure variables
+Patient 3614 | Total number of segments retained:  88No id variables; using all as measure variables
+Recommended cut-off is:  0.24number of iterations= 188 
+number of iterations= 91 
+Starting patient : 75 
+No id variables; using all as measure variables
+Patient 3697 | Total number of segments retained:  22No id variables; using all as measure variables
+Recommended cut-off is:  0.025number of iterations= 78 
+number of iterations= 55 
+Starting patient : 76 
+No id variables; using all as measure variables
+Patient 3779 | Total number of segments retained:  76No id variables; using all as measure variables
+Recommended cut-off is:  0.485WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+Starting patient : 77 
+No id variables; using all as measure variables
+Patient 3806 | Total number of segments retained:  33No id variables; using all as measure variables
+ERROR at: 77 
+Starting patient : 78 
+No id variables; using all as measure variables
+Patient 3882 | Total number of segments retained:  45No id variables; using all as measure variables
+Recommended cut-off is:  0.495number of iterations= 790 
+WARNING! NOT CONVERGENT! 
+number of iterations= 1000 
+number of iterations= 41 
+Starting patient : 79 
+No id variables; using all as measure variables
+Patient 3903 | Total number of segments retained:  62No id variables; using all as measure variables
+Recommended cut-off is:  0.425number of iterations= 9 
+number of iterations= 11 
+number of iterations= 29 
+number of iterations= 20 
+number of iterations= 9 
+Starting patient : 80 
+No id variables; using all as measure variables
+Patient 4036 | Total number of segments retained:  35No id variables; using all as measure variables
+ERROR at: 80 

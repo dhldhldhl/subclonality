@@ -367,13 +367,9 @@ cutOffVec <- seq(0.025,0.5,by=0.005) #cut-off values for pre-filtering
 epsilon <- 0.05 #error margin for monotony
 ```
 
-Diagnostic plot:
+Find best sample order
 
--   plot1: proportion of subclonal segments
--   plot2: total number of non-clonal (light blue) and subclonal (dark
-    blue) segments
-
-```{r diag_plot}
+```{r sample_order}
 fitInfo <- list()
 for (cutOff in cutOffVec){
   seg.dcn.Eval <- filterSegmentRatios(seg.dcn.toOrder, cutOff, filterMethod, 0)
@@ -383,20 +379,6 @@ for (cutOff in cutOffVec){
   fitInfo[[as.character(cutOff)]] <- best
 }
 
-fitInfo.df <- data.frame(cutOff = cutOffVec,
-                         maxFit = sapply(fitInfo, function(x) x$max),
-                         segsAboveCut = sapply(fitInfo, function(x) length(x$cons)),
-                         segsInOrder = sapply(fitInfo, function(x) max(sapply(x$segs, length))))
-
-#p1: proportion of subclonal segments
-p1 <- ggplot(fitInfo.df, aes(x=cutOff, y=maxFit)) + geom_line(size=2,colour='darkgreen') + theme_bw() +
-  labs(x='Clonal cut-off',y='Subclonal proportion (of non-clonal segments)')
-
-#p2: total number of non-clonal (light blue) and subclonal (dark blue) segments
-p2 <- ggplot(fitInfo.df, aes(x=cutOff, y=segsAboveCut)) + geom_line(size=2,colour='deepskyblue3') +
-  geom_line(aes(y=segsInOrder), size=2,colour='dodgerblue4') + theme_bw() +
-  labs(x='Clonal cut-off',y='Total number of non-clonal and subclonal segments')
-grid.arrange(p1,p2,nrow=1)
 ```
 
 ### filterSegmentRatios()
@@ -433,12 +415,13 @@ segments are discarded.
 Function number 5: **findBestOrder**. Filtered non-clonal segments are
 inputted into the function. The function returns:
 
-*cons: row-names of all segments considered
-*max: maximum fit gained
-*ord: order with the maximum fit, 
-*segs:segments monotone according to max fit
+* cons: row-names of all segments considered
+* max: maximum fit gained
+* ord: order with the maximum fit, 
+* segs:segments monotone according to max fit
 
-    function(seg.ratios.Eval, ordVec, threshold, nCol, base=1){
+```
+    findBestOrder <- function(seg.ratios.Eval, ordVec, threshold, nCol, base=1){
       #findBestOrder(seg.dcn.Eval, ordVec, epsilon, nCol, 0)
         #so threhold here = epsilon
       
@@ -479,6 +462,8 @@ inputted into the function. The function returns:
                   segs=fitSegments[inds]))
     }
 
+```
+
 ### evalOrder()
 
 Function number 6: **evalOrder**. Used in function findBestOrder(), this
@@ -509,6 +494,38 @@ measurement noise."
         }
       return(sum(orderFit==nCol))
     }
+
+Diagnostic plot:
+
+-   plot1: proportion of subclonal segments
+-   plot2: total number of non-clonal (light blue) and subclonal (dark
+    blue) segments
+
+```{r diag_plot}
+fitInfo <- list()
+for (cutOff in cutOffVec){
+  seg.dcn.Eval <- filterSegmentRatios(seg.dcn.toOrder, cutOff, filterMethod, 0)
+  
+  best <- findBestOrder(seg.dcn.Eval, ordVec, epsilon, nCol, 0)
+  
+  fitInfo[[as.character(cutOff)]] <- best
+}
+
+fitInfo.df <- data.frame(cutOff = cutOffVec,
+                         maxFit = sapply(fitInfo, function(x) x$max),
+                         segsAboveCut = sapply(fitInfo, function(x) length(x$cons)),
+                         segsInOrder = sapply(fitInfo, function(x) max(sapply(x$segs, length))))
+
+#p1: proportion of subclonal segments
+p1 <- ggplot(fitInfo.df, aes(x=cutOff, y=maxFit)) + geom_line(size=2,colour='darkgreen') + theme_bw() +
+  labs(x='Clonal cut-off',y='Subclonal proportion (of non-clonal segments)')
+
+#p2: total number of non-clonal (light blue) and subclonal (dark blue) segments
+p2 <- ggplot(fitInfo.df, aes(x=cutOff, y=segsAboveCut)) + geom_line(size=2,colour='deepskyblue3') +
+  geom_line(aes(y=segsInOrder), size=2,colour='dodgerblue4') + theme_bw() +
+  labs(x='Clonal cut-off',y='Total number of non-clonal and subclonal segments')
+grid.arrange(p1,p2,nrow=1)
+```
 
 A typical cut-off \~0.1 is adequate. Too low or too high cut-off will
 select for noise. Ideal cut-off should have a reasonable number of

@@ -123,7 +123,7 @@ run_liquidCNA <- function(p_num){
   
   #Designate reference sample
   #& calculate dCN
-  baseSample <- 'Sample1'
+  baseSample <- names(seg.df.corr)[1]
   seg.dcn <- seg.cns.corr - seg.cns.corr[,baseSample]
   seg.dcn.nonBase <- seg.dcn %>% select(-one_of(baseSample))
   
@@ -296,15 +296,96 @@ for(patient_x in 1:80){
 
 names(liquidCNA_results) <- paste0("patient_", patient_ids)
 
-# p_vec <- 1:80
-# liquidCNA_results <- sapply(p_vec, function(p_num) run_liquidCNA(p_num), simplify = F)
-
-
-save(liquidCNA_results, 
-     file = "../DATA/liquidCNA_results.RData")
+save(liquidCNA_results, file = "../DATA/liquidCNA_results.RData")
 
 
 ################################################################################
+load("../DATA/bam_by_patient.RData")
+load("../DATA/liquidCNA_results.RData")
+liquidCNA_results
 
-# load("../DATA/liquidCNA_results.RData")
-# liquidCNA_results
+
+null_res <- sapply(1:80, function(x) is.null(liquidCNA_results[[x]]))
+
+####################################
+#error patients
+error_patients <- which(null_res)
+
+error_bam <- sapply(error_patients, function(x) bam_by_patient[[x]])
+names(error_bam) <- error_patients
+#where is the error coming from?
+
+#Source 1)
+#for patients with 2 samples
+# Error in segs[(rat.sd > cutOff), , drop = F] :
+#   incorrect number of dimensions
+#from filterSegmentRatios() function
+
+#Source 2)
+#for others patients, it seems to have been an error coming from baseSample.
+#as we filtered out samples, baseSample wasn't there anymore. fixed.
+
+#Source 3)
+#patient with more than 6 samples, but for all purity is below 0.1 threshold
+#e.g. patient 1439
+
+#how many patients have only two time samples?
+sample_num_patient <- sapply(1:80, function(x) length(bam_by_patient[[x]]))
+two_samp_patients <- which(sample_num_patient == 2)
+#yep, all patients with only two time samples get error
+#TODO: figure out why
+
+####################################
+#Patients with more than two time samples, but null results:
+two_plus_index <- which(!(error_patients %in% two_samp_patients))
+two_plus_patients <- error_patients[two_plus_index]
+
+sapply(two_plus_patients, function(x) bam_by_patient[[x]])
+
+for(patient_x in two_plus_patients){
+  tryCatch({
+    cat("Starting patient :", patient_x, "\n")
+    liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
+  }, error=function(e){cat("ERROR at:", patient_x, "\n")})
+}
+
+####################################
+#Patients with more than 6 samples
+timely_patients <- which(sample_num_patient > 6)
+timely_bam_num <- sample_num_patient[timely_patients]
+
+#divide bams
+nbatch1 <- ceiling(timely_bam_num/2)
+nbatch2 <- timely_bam_num - nbatch1
+
+batch1 <- sapply(1:length(timely_patients), 
+                      function(x) bam_by_patient[[timely_patients[x]]][1:nbatch1[x]])
+batch2 <- sapply(1:length(timely_patients), 
+                      function(x) tail(bam_by_patient[[timely_patients[x]]], nbatch2[x]+1))
+
+names(batch1) <- timely_patients
+names(batch2) <- timely_patients
+
+timely_liquidCNA_results <- vector(mode = "list", length = length(timely_patients))
+
+#batch1
+for(patient_x in timely_patients){
+  tryCatch({
+    cat("Starting patient :", patient_x, "\n")
+    liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
+  }, error=function(e){cat("ERROR at:", patient_x, "\n")})
+}
+
+
+
+####################################
+#Patients that couldn't converge for absolute estimation
+results <- sapply(which(null_res == F), function(x) liquidCNA_results[[x]], simplify = F)
+names(results) <- paste0("patient_", patient_ids[which(null_res == F)])
+
+rat_converge <- sapply(1:length(results), function(x) NA %in% results[[x]]$rat)
+table(rat_converge) #TRUE = has NA; error in 15 patients
+#this means currently, out of 80 patients,
+#liquidCNA ran smoothly for only 36 patients)
+
+
