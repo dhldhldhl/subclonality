@@ -41,7 +41,7 @@ qdna_analysis <- function(p){
   readCountsFiltered <- applyFilters(readCounts, residual=TRUE, blacklist=TRUE,
                                      mappability = 75)
   #Plot2
-  #plot median read counts as a function of GC content and mappability
+  #plot median read counts as a function of GC content and mapp ability
   isobarPlot(readCountsFiltered)
   
   #Estimate the correction for GC content and mappability

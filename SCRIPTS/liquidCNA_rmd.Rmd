@@ -14,6 +14,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
 library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
 require(gtools); library(gridExtra); library(devtools)
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
 source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
 ```
 
@@ -53,13 +55,13 @@ for one of the patients.
 
 ```{r load QDNAoutput}
 #load parsed metadata
-load("../../DATA/bam_by_patient.RData")
+load("../DATA/bam_by_patient.RData")
 p_vec <- 1:length(patient_ids)
 p <- p_vec[12] 
 
 #load QDNA output of CN dataframe 
-seg.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
-cn.df <- read.delim(paste0("../../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
+seg.df <- read.delim(paste0("../DATA/2_QDNA_CNout/segment_", patient_ids[p], ".txt"))
+cn.df <- read.delim(paste0("../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p], ".txt"))
 
 #parse dataframe
 seg.df <- seg.df[,-(1:4)]
@@ -597,7 +599,10 @@ topSample <- names(seg.dcn.toUse)[ncol(seg.dcn.toUse)]
 toEstimate <- setdiff(names(seg.dcn.toUse), c(topSample,baseSample))
 
 final.ratios <- estimateRSegmentRatio(seg.dcn.toUse, toEstimate, topSample, 1)
+#ratio of: (cn of one sample / cn of topSample) for each segment
+head(final.ratios) 
 
+#median of ratios for each non-top samples
 final.medians <- aggregate(final.ratios$value, 
                            by=list(final.ratios$variable), median)
 
@@ -609,18 +614,19 @@ Function number 8 **estimateRSegmentRatio**. This function estimates
 relative subclonal ratio using dCN compared to the 'top' sample. 'Top'
 sample is the last sample in the chosen sample order. As sample order is
 chosen with assumption of monotonic increase in subclonality, last
-sample will ahve the highest relative subclonal-ratio (of 1). The
+sample will have the highest relative subclonal-ratio (of 1). The
 function simply is the ratio of purity corrected CNs of segment:
-(non-top-sample / top-sample) for all each non-top sample for all
+(CN of non-top-sample / CN of top-sample) for each non-top sample for each
 segments.
 
-Input: \* - seg.ratios = normalised, purity-corrected segment CN matrix
-of only subclonal segments \* - toEstimate = vector of samples to be
-estimated, i.e. not baseline, discarded or maximal resistant ratio
-samples \* - topSamples = samples with maximal resistant ratio to use as
-denominator in estimating relative ratios \* - w = weights of segments
-to control reliability, can be kept at 1 if no prior assumptions
+Input: 
 
+* seg.ratios = normalised, purity-corrected segment CN matrix of only subclonal segments 
+* toEstimate = vector of samples to be estimated, i.e. not baseline, discarded or maximal resistant ratio samples 
+* topSamples = samples with maximal resistant ratio to use as denominator in estimating relative ratios
+* w = weights of segments to control reliability, can be kept at 1 if no prior assumptions
+
+```
     estimateRSegmentRatio <- function(seg.ratios, toEstimate, topSamples, w){
         final.ratios <- data.frame(matrix(vector()))
 
@@ -638,6 +644,7 @@ to control reliability, can be kept at 1 if no prior assumptions
         }
         return(final.ratios)
     }
+```
 
 PLOT estimated relative ratios
 
@@ -682,17 +689,14 @@ absolute ratio."
 
 "To also derive the variance of the estimate, we can provide the number
 of distinct DeltaCN states the segment values are distributed over, e.g.
-3 (-1, 1, 2) - **default is 2**."
+3 (-1, 1, 2) - **default is 3**."
 
 Input:
 
-seg.rel.toUse = normalised, purity-corrected segment CN of subclonal segments only
-
-topSample = sample to be investigated - use in loop to evaluate for all samples
-
-final.medians = output data frame with column "time' denoting the sample and "rat" denoting the estimated ratio and "rat_sd" its variance
-
-(optional) nStates = number of DeltaCN states presented in the data, e.g. DCN={-1,1,2} -> nStates=3; this is used to compute the variance of the estimate
+* seg.rel.toUse = normalised, purity-corrected segment CN of subclonal segments only
+* topSample = sample to be investigated - use in loop to evaluate for all samples
+* final.medians = output data frame with column "time' denoting the sample and "rat" denoting the estimated ratio and "rat_sd" its variance
+* (optional) nStates = number of DeltaCN states presented in the data, e.g. DCN={-1,1,2} -> nStates=3; this is used to compute the variance of the estimate
 
 Returns updated final.medians containing values for ratio and variance
 of the estimate
@@ -705,6 +709,7 @@ Parameters to investigate for nomalmixEM:
 * lambda
 * mu
 + i.e., DCNs investigated
+
 ```
 estimateRGaussianFit <- function(seg.rel.toUse, topSample, 
                                 final.medians, gaussSigma=0.1, nStates=2, 

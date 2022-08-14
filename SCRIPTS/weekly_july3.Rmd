@@ -1,0 +1,284 @@
+---
+title: "weekly_july3"
+author: "Dohun Lee"
+date: '2022-07-14'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+source("SCRIPTS/3_liquidCNA.R")
+load("../DATA/bam_by_patient.RData")
+load("../DATA/antwerpData.RData")
+load("../DATA/weekly_july3.RData")
+load("../DATA/liquidCNA_results_july1.RData")
+load("../DATA/liquidCNA_results_july2.RData")
+```
+
+This is a RMDmarkdown to track and show progress between 13/07/22 \~ 27/07/22.
+
+These were the main things to tackle:
+
+1.  Absolute ratio 0~1
+2.  ichorCNA: correlation between liquidCNA and ichorCNA's optimichorCNA & CTC_count
+3.  Compare the absolute ratios between timely batch 2 options
+4.  RECIST: look at metastatic data; look at progression; evaluate whether subclonality tells us anything; compare subclonality between Y and N metastasis
+
+# 1. Absolute ratio 0~1
+
+### Patient 3080 | patient with extreme absolute sub-clonality estimation:
+
+```{r}
+
+liquidCNA_results$patient_3080
+
+```
+
+### I think the extreme absolute subclonality ratio is coming from extreme deltaCN values
+
+```{r}
+head(seg.dcn.toUse.46)
+```
+### The extreme deltaCN seems to come from low purity...
+
+### The three time samples have the following purity estimates:
+```{r}
+pVec.46
+```
+
+### This results the sample with low purity to have extreme CNS when corrected by purity.
+
+### Before correction the segment CN values look normal...
+```{r}
+head(seg.cns.46)
+```
+### However, with correction...
+```{r}
+head(seg.cns.corr.46)
+```
+### The equation they correct CNS with purity by: **(((CNS-2)*1/purity)+2)**
+
+### If we correct the CNS value of the first segment for each sample... 
+```{r}
+(1.371152	 - 2)/0.05 + 2 #Sample1
+(2.004080 - 2)/0.07 + 2 #Sample2
+(1.730489 - 2)/0.13 + 2 #Sample3
+```
+
+### This results dCN to be extreme
+
+```{r}
+head(seg.dcn.46)
+```
+
+### So it seems that the extreme subclonality estimates are coming from low purity and purity-corrected CNS rather than the GMM fitting step
+
+## Take the samples where sub-ratio is outside [0,1] and check the corresponding purity: 
+
+Majority of the error looks to come from small purity values. Currently, 31 out of 283 estimates are outside [0,1]; this is from 22/80 patients. Additionally, only 23 of the estimates linked with RECIST are outside the boundary.
+
+```{r}
+rats <- unlist(sapply(1:length(liquidCNA_results), 
+                      function(x) as.numeric(liquidCNA_results[[x]]$rat)))
+purities <- unlist(sapply(1:length(liquidCNA_results), 
+                          function(x) as.numeric(liquidCNA_results[[x]]$purity_mean)))
+
+# 31/283 estimations have sub-clonality ratio outside of [0,1]
+out.rats <- which(rats < 0 | rats > 1)
+length(out.rats)
+
+is.out.rat <- function(x){
+  rats <- as.numeric(liquidCNA_results[[x]]$rat)
+  return(any(rats < 0 | rats > 1))
+}
+
+# 22/80 patients have sub-clonality ratio outside of [0,1]
+out.rat.patients <- which(sapply(1:length(liquidCNA_results), function(x) is.out.rat(x)))
+length((out.rat.patients))
+
+#purities of out.rats
+rats[out.rats]
+purities[out.rats]
+
+plot(purities[out.rats], rats[out.rats],
+     ylab = "Sub-ratio estimate outside [0,1]",
+     xlab = "Corresponding purity estimates")
+
+out.results <- sapply(out.rat.patients, function(x) liquidCNA_results[[x]], simplify = F)
+names(out.results) <- paste0("patient_", patient_ids[out.rat.patients])
+```
+
+Feedback: "it would be nice to see what causes the high-purity samples in your plot to fail as well? You can focus on the 2-3 with the highest purity and investigate them further."
+
+## Investigating why purities are failing:
+
+### idea 1: when one of the samples have drastically lower purity
+```{r}
+out.results$patient_3614
+```
+
+Purity values:
+```{r}
+pVec.58
+```
+
+Again, the dCN values for the erroneous sample are at a greater scale.
+```{r}
+head(seg.dcn.toUse.58)
+```
+
+### If we look at segment CN values, we can see that the CN states are at a drastically different range. This is resulted during the renomarlisation stage (where the centre of CN is recentred to be exactly 2). 
+
+Could we trim them out? not consider these segments? I tried setting the maximum CN value to be 6 (as the CN states considered during purity estimation are 5 CN states anyways). Whilst this method did not 'save' the result for patient 3614, it did bring down the absolute subclonality estimation to be near 1 (so I believe it would save the result for less drastic patients). One thing is, this seems like I am disturbing high quality sample (high purity) to fit well with lower quality samples (low purity).
+
+```{r}
+plot.3C(3, cn.df.58, seg.df.58, seg.sub.58, seg.plot.58, 3301)
+plot.3C(2, cn.df.58, seg.df.58, seg.sub.58, seg.plot.58, 3301)
+```
+
+```{r}
+plot(density(seg.df.58[,2]), main = "density plot of Sample 2's seg.df")
+plot(density(seg.df.58[,3]), main = "density plot of Sample 3's seg.df")
+
+plot(density(cn.df.58[,2]), main = "density plot of Sample 2's cn.df")
+plot(density(cn.df.58[,3]), main = "density plot of Sample 3's cn.df")
+```
+
+
+# 2. ichorCNA
+
+### ichorCNA prediction of purity versus liquidCNA
+
+There doesn't seem to be much correlation between the two estimations. Of note, for many of the samples, one of the algorithms estimate purity = 0, whilst the other predict a wide range of purities. This is expected as (in liquidCNA) baseline samples are restricted/assumed to purity of 0. 
+
+```{r}
+optimichor <- ichorCNA$OptimichorCNA
+ctc_count <- ichorCNA$CTC_count
+
+ichorCNA.sorted <- ichorCNA[order( ichorCNA$Patient_ID, ichorCNA$Date ),]
+
+ichor.purities <- ichorCNA.sorted$OptimichorCNA
+ichor.purities <- ichor.purities / 100
+
+plot(purities, ichor.purities, xlab = "liquidCNA", ylab = "ichorCNA",
+     main = "purity | liquidCNA vs ichorCNA")
+```
+
+### Circulating tumor cell (CTC) count
+
+```{r}
+plot(ichor.purities, ctc_count, xlab = "ichorCNA purity", ylab = "ichorCNA CTC",
+     main = "liquidCNA purity vs ichorCNA CTC count")
+```
+
+
+# 4. Linking with RECIST 
+
+```{r, include=FALSE}
+build.df <- function(patient_id){
+  #get patient's liquidCNA results, RECIST and ichorCNA data
+  p_num <- match(patient_id, patient_ids)
+  p.liquid <- liquidCNA_results[[p_num]]
+  p.RECIST <- RECIST[which(RECIST$Patient_ID == patient_id),]
+  p.ichor <- ichorCNA[which(ichorCNA$Patient_ID == patient_id),]
+  
+  p.rat.last <- tail(p.RECIST$rat, n=1) 
+  p.rat.second <- p.RECIST$rat[2]
+  p.purity.last <- tail(p.RECIST$purity_mean, n=1) 
+  p.purity.first <- p.RECIST$purity_mean[1]
+  
+  if(nrow(p.RECIST)==0){
+    p.df <- data.frame(p.progression = NA,
+                       OS = NA,
+                       purity.increasing = NA,
+                       purity.change = NA,
+                       subclone.increasing = NA,
+                       subclone.change = NA)
+    rownames(p.df) <- paste0("patient_", patient_id)
+    return(p.df)
+  } else {
+    
+    #1. whether there is a change in progression
+      # 1 is always progression
+      # 0 is always stable
+      # -1 is mix of progression and stable
+    progression <- ifelse(p.RECIST$Progression=="YES",1,0)
+    any.na <- any(is.na(progression))
+    test <- sum(progression) - length(progression)
+    always.stable <- ifelse(test == -(length(progression)), 1, 0)
+    if(any.na){
+      p.progression <- NA
+    } else {
+      if(sign(test) == 0){
+        p.progression <- 1
+      } else {
+        p.progression <- ifelse(always.stable == 1, 0, -1)
+      }
+    }
+    
+    #2. patient alive? 1 is yes, 0 is deceased
+    OS <- ifelse(all(p.ichor$Deceased == "alive"), 1, 0)
+    
+    #3. Purity Boolean. purity, is overall increasing or decreasing over time samples?
+    #boolean of is increasing? 1 is yes, 0 is no (decreasing)
+    purity.increasing <- ifelse((p.purity.last - p.purity.first)>0, 1, 0)
+    
+    #4. Purity. how much does purity change between first blood draw and last?
+    purity.change <- p.purity.last - p.purity.first
+    
+    #5. Sub-clone Boolean. whether sub-clonality overall decreased or increased over time samples.
+    #boolean of is increasing? 1 is yes, 0 is no (decreasing)
+    subclone.increasing <- ifelse((p.rat.last - p.rat.second)>0, 1, 0)
+    
+    #6. Subclone. absolute change in sub-clonality between first blood draw and last:
+    subclone.change <- p.rat.last
+    
+    #package into a dataframe
+    p.df <- data.frame(p.progression = p.progression,
+                       OS = OS,
+                       purity.increasing = purity.increasing,
+                       purity.change = purity.change,
+                       subclone.increasing = subclone.increasing,
+                       subclone.change = subclone.change)
+    rownames(p.df) <- paste0("patient_", patient_id)
+    return(p.df)
+    
+  }
+}
+```
+
+For each patient, build.df() builds a dataframe with 6 information:
+
+  1. Whether there is a change in progression
+    + 1 is always progression
+    + 0 is always stable
+    + -1 is mix of progression and stable
+  2. Patient alive? 1 is yes, 0 is deceased
+  3. Purity Boolean. purity, is overall increasing or decreasing over time samples? Boolean of is increasing? 1 is yes, 0 is no (decreasing)
+  4. Purity. how much does purity change between first blood draw and last?
+  5. Sub-clone Boolean. whether sub-clonality overall decreased or increased over time samples. boolean of is increasing? 1 is yes, 0 is no (decreasing)
+  6. Subclone. absolute change in sub-clonality between first blood draw and last.
+  
+```{r}
+head(c.df)
+```
+
+
+
+
+
+
+
+
+
+
+
+

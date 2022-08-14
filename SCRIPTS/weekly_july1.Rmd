@@ -1,0 +1,232 @@
+---
+title: "weekly_junly1"
+author: "Dohun Lee"
+date: '2022-07-01'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+source("SCRIPTS/3_liquidCNA.R")
+load("../DATA/bam_by_patient.RData")
+load("../DATA/antwerpData.RData")
+load("../DATA/weekly_july1.RData")
+load("../DATA/liquidCNA_results_july1.RData")
+```
+
+This is a RMDmarkdown to track and show progress between 30/06/22 \~ 06/07/22.
+
+There were 3 main things to tackle:
+
+1.  Reproduce figure 3C
+2.  Make estimateRGaussian() work with nstates = 3
+  +   Check why there is an error for patient 1439
+  +   Is there really a problem if EM requires more than 800 steps? Try increasing this. -> 1500, got rid of all NAs, what are its implications
+  +   reRun for all patients can collect results for all -> DONE
+    - Record nrow(seg.dcn.toUse)
+3.  Append purity and subclonal ratios of each patient-time sample onto RECIST
+
+
+# 1. Figure 3C
+
+Figure 3C is showing...: *"Copy number profile of sample, with raw bin-wise and segmented copy number values shown in black and red, respectively."*
+
+Can we colour in the segments that liquidCNA designates to be sub-clonal and is used to estimate sub-clonal ratio?
+
+**Problem 1: the segments used in liquidCNA are ensemble segments, so are subsets of segments identified in QDNAseq.**
+
+Answer 1: we do have start and end (bin number, i.e., row of seg.df) for ensemble segments
+```{r}
+head(patient1.seg.data)
+```
+
+**Problem 2: How can I parse through a QDNAseq data object? Can data regarding ensemble segments be appended then plotted?**
+
+```{r QDNAseqObject}
+copyNumbersSegmented
+plot(copyNumbersSegmented)
+```
+
+
+# 2. Run liquidCNA for all patients and study the results
+
+## Run for normal patients
+
+```{r}
+#Patients with only two samples
+sample_num_patient <- sapply(1:80, function(x) length(bam_by_patient[[x]]))
+two_samp_patients <- which(sample_num_patient == 2)
+
+#Patients with over 6 samples
+timely_patients <- which(sample_num_patient > 6)
+
+go_patients <- 1:80
+go_patients <- go_patients[!(go_patients %in% two_samp_patients)]
+go_patients <- go_patients[!(go_patients %in% timely_patients)]
+```
+
+Run!
+```{r, eval = FALSE, include=TRUE}
+#initialise results vector
+go_results <- vector(mode = "list", length = length(go_patients))
+
+#Run for go_patients (i.e., non 2 or timely sample patients)
+for(patient_x in 1:length(go_patients)){
+  tryCatch({
+    cat("Starting patient :", patient_x, "\n")
+    go_results[[patient_x]] <- run_liquidCNA(go_patients[patient_x])
+  }, error=function(e){cat("ERROR at:", go_patients[patient_x], "\n")})
+}
+
+names(go_results) <- paste0("patient_",patient_ids[go_patients])
+```
+
+### GO: Investigate error
+Investigate: 
+
+*   patients with NULL results,
+*   patients with NA for absolute value,
+*   patients with absolute ratio out of boundary of 0~1. <- in fact, rat is absolute ratio so a rat value outside of boundary would be fine? as negative value means less subclones than base sample, and rat > 1 is simply that much more than the base sample?
+
+```{r}
+#NULL results
+null_go <- go_patients[which(sapply(1:length(go_patients), function(x) is.null(go_results[[x]])))]
+null_go
+
+#NA absolute - all time samples have an absolute ratio
+any(sapply(1:length(go_patients), function(x) any(is.na(go_results[[x]]$rat))))
+
+#absolute smaller than 0 - NONE
+any(sapply(1:length(go_patients), function(x) any(as.numeric(go_results[[x]]$rat) < 0)))
+
+#absolute greater than 1 - absolute ratio so bigger than 1 is fine?
+big_rat_go <- which(sapply(1:length(go_patients), function(x) any(as.numeric(go_results[[x]]$rat) > 1)))
+  #ids of patients with rat > 1
+patient_ids[go_patients[big_rat_go]]
+```
+
+Tackle NULL patients, where is the ERROR coming from? and how can we fix it?
+
+## Run for two sample patients
+
+Run!
+```{r,eval = FALSE, include=TRUE}
+#initialise results vector
+two_samp_results <- vector(mode = "list", length = length(two_samp_patients))
+
+#run!
+for(patient_x in 1:length(two_samp_patients)){
+  tryCatch({
+    cat("Starting patient :", patient_x, "\n")
+    two_samp_results[[patient_x]] <- run_2samp_liquidCNA(two_samp_patients[patient_x])
+  }, error=function(e){cat("ERROR at:", patient_x, "\n")})
+}
+
+names(two_samp_results) <- paste0("patient_",patient_ids[two_samp_patients])
+```
+
+
+```{r}
+head(two_samp_results)
+```
+
+## Run for 6+ patients
+
+```{r, eval=FALSE, include=TRUE}
+#number of BAM files our timely patients have
+timely_bam_num <- sample_num_patient[timely_patients]
+
+#number of bam files to batch each timely patient by:
+nbatch1 <- ceiling(timely_bam_num/2)
+nbatch2 <- timely_bam_num - nbatch1
+
+#initialise result vector
+timely_res1 <- vector(mode = "list", length = length(timely_patients))
+timely_res2 <- vector(mode = "list", length = length(timely_patients))
+
+#RUN!
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    cat("\n Starting", x, "\n")
+    timely_res1[[x]] <- run_liquidCNA(timely_patients[x], 
+                               timely = TRUE,
+                               batch1 = TRUE,
+                               nbatch = nbatch1[x])
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    cat("\n Starting", x, "\n")
+    timely_res2[[x]] <- run_liquidCNA(timely_patients[x], 
+                               timely = TRUE,
+                               batch1 = FALSE,
+                               nbatch = nbatch2[x])
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+names(timely_res1) <- paste0("patient_",patient_ids[timely_patients],"_batch1")
+names(timely_res2) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+
+```
+
+
+### Timely: Investigate error
+
+I think this may be due to erroneous BAM file present for this patient - not sure why though...
+
+Erroneous BAM file: SLX.17921.D701tp_D505tp.H5J55BBXY.s_8.r_1
+```{r}
+error_seg.df <- read.delim(paste0("../DATA/2_QDNA_CNout/segment_2789_og.txt"))
+error_seg.df <- error_seg.df[,-(1:4)]
+colnames(error_seg.df) <- paste0("Sample", 1:ncol(error_seg.df))
+head(error_seg.df)
+```
+
+### Stitch Timely
+
+Question - for the results, how are the rows ordered? should i reorder them so they just go up? this won't take long just look
+A - in final.results, rows are ordered in the sample order found by liquidCNA with base sample appended in the final row
+
+**Problem: this method of stitching doesn't make sense. as the assumption of liquidCNA, results the base sample of second batch to have sub-clonality of 0**
+```{r}
+batch1_rat <- as.numeric(timely_res1[[1]]$rat)
+batch2_rat <- as.numeric(timely_res2[[1]]$rat)
+
+batch1_rat
+batch2_rat
+
+rat_ordered <- c(batch1_rat[length(batch1_rat)], batch1_rat[1:(length(batch1_rat)-1)], batch2_rat[length(batch2_rat)], batch2_rat[1:(length(batch2_rat)-1)])
+
+plot(rat_ordered, type = "l", ylab = "Absolute sub-clone ratio estimated",
+     xlab = "Ordered Samples")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,129 @@
+---
+title: "weekly_july4"
+author: "Dohun Lee"
+date: '2022-07-20'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+source("SCRIPTS/3_liquidCNA.R")
+load("../DATA/bam_by_patient.RData")
+load("../DATA/antwerpData.RData")
+load("../DATA/liquidCNA_results_july4.RData")
+load("../DATA/new_ichor.RData")
+```
+
+This is a RMDmarkdown to track and show progress between 20/07/22 \~ 27/07/22.
+
+There are four things I would like to share with you.
+
+1. I am now having most of my absolute subclonality estimations in the range [0,1]. 
+2. Boxplot suggested by Oscar. 
+3. Timeplot of subclonality, purity and CT scan results mentioned by Solon.
+4. liquidCNA vs ichorCNA (with results newly sent by Solon)
+
+# 1. Absolute ratio [0,1]
+
+```{r, include=FALSE}
+RECIST <- append.RECIST()
+```
+
+```{r}
+boxplot(RECIST$rat, 
+        ylim = c(-0.5, 1.8),
+        main = "Boxplot of all subclonality estimations",
+        las = 1,
+        col = c("lightblue"),
+        border = "brown",
+        horizontal = FALSE,
+        notch = TRUE)
+```
+
+### I was able to achieve this by changing the baseline samples; instead of always setting it to Sample1, I set the Sample with the lowest mean CNS to be the baseline. 
+
+# 2. Boxplot of subclonality for YES/NO Progression
+
+### Subclonality: 
+
+```{r}
+#SUBCLONALITY X PROGRESSION!
+na.or.base <- which(is.na(RECIST$rat) | RECIST$rat == 0)
+RECIST.good <- RECIST[-na.or.base,]
+
+yes.prog <- which(RECIST.good$Progression == "YES")
+
+#
+boxplot(RECIST.good[yes.prog,]$rat, 
+        RECIST.good[-yes.prog,]$rat,
+        ylim = c(0, 2),
+        main = "Subclonality estimation against progression",
+        at = c(1,2),
+        names = c("YES", "NO"),
+        las = 1,
+        col = c("lightblue","pink"),
+        border = "brown",
+        horizontal = FALSE,
+        notch = TRUE)
+```
+
+### Fortunately, the boxplot shows an increase in sub-clonality with progression. However, this is less apparent for purity.
+
+### Purity: 
+
+```{r}
+#PURITY X PROGRESSION!
+yes.prog <- which(RECIST.good$Progression == "YES")
+
+#draw
+boxplot(RECIST[yes.prog,]$purity_mean, 
+        RECIST[-yes.prog,]$purity_mean,
+        ylim = c(0, 0.6),
+        main = "Purity estimation against progression",
+        at = c(1,2),
+        names = c("YES", "NO"),
+        las = 1,
+        col = c("lightblue","pink"),
+        border = "brown",
+        horizontal = FALSE,
+        notch = TRUE)
+
+```
+
+# 3. Timeplot of subclonality, purity and CT scan result
+
+### Here are two examples:
+
+```{r}
+plot.estimation.w.RECIST(2)
+```
+
+```{r}
+plot.estimation.w.RECIST(7)
+```
+
+# 4. IchorCNA vs liquidCNA
+
+There still aren't any apparent correlations between purity estimations of liquidCNA and ichorCNA. 
+
+### **For ichorCNA, I am using the values under the column ichorCNA. Is this correct? What are the columns ACE, rascal & tMAD?**
+
+```{r}
+#get liquidCNA purities
+purities <- unlist(sapply(1:length(liquidCNA_results), 
+                          function(x) as.numeric(liquidCNA_results[[x]]$purity_mean)))
+
+plot(purities, unlist(ichor.purities), xlab = "liquidCNA", ylab = "ichorCNA",
+     main = "purity | liquidCNA vs ichorCNA")
+
+```
+
+

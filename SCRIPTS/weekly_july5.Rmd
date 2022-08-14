@@ -1,0 +1,227 @@
+---
+title: "weekly_july5"
+author: "Dohun Lee"
+date: '2022-07-29'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+library("dplyr")
+library("ggpubr")
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+source("SCRIPTS/3_liquidCNA.R")
+load("../DATA/bam_by_patient.RData")
+load("../DATA/antwerpData.RData")
+load("../DATA/liquidCNA_results_july4.RData")
+```
+
+Hello Solon, this is a Rmarkdown to discuss two of the things I've been working on:
+
+1.  Two group statistical testings
+2.  KM curves
+
+# 1.0 P-values
+
+First, append purity and subclonality estimations from liquidCNA. **Then, group subclonalities depending on Progression is YES or NO.**
+```{r}
+RECIST <- append.RECIST()
+yes.prog <- which(RECIST$Progression == "YES")
+no.prog <- which(RECIST$Progression == "NO")
+
+yes.progression <- RECIST[yes.prog,]$rat
+no.progression <- RECIST[no.prog,]$rat
+
+no.progression <- no.progression[!(is.na(no.progression))]
+yes.progression <- yes.progression[!(is.na(yes.progression))]
+```
+
+### T-test:
+
+First, using shapiro to test for normality:
+```{r}
+shapiro.test(no.progression) # p-value < 0.05
+shapiro.test(yes.progression) # p-value < 0.05
+```
+
+p-value is less than 0.05 implying that the distribution of the data are significantly different from normal distribution. Thus, the distribution of estimated subclonalities are skewed, **normality should not be assumed and T-test is inappropriate**.
+
+Still, doing the t-test, p-value is 0.3489
+```{r}
+t.test(no.progression, yes.progression, var.equal = FALSE) #p-value > 0.05
+```
+
+As normality cannot be assumed, Unpaired Two-Samples **Wilcoxon Test** was conducted instead. **This however resulted a p-value of 1**
+```{r}
+wilcox.test(no.progression, yes.progression, alternative = "two.sided")
+```
+
+As opposed to this **purity estimation results significant for both** T-test and Wilcox test:
+
+```{r}
+t.test(RECIST[no.prog,]$purity_mean, RECIST[yes.prog,]$purity_mean, var.equal = FALSE)
+
+wilcox.test(RECIST[no.prog,]$purity_mean, RECIST[yes.prog,]$purity_mean, alternative = "two.sided")
+
+```
+
+**With Wilcox testing giving a p-value of 1, I am wondering if I have made an error in doing the statistic test somewhere. Do you have any idea what may be the cause here?**
+
+# 2.0 Using subclonality to estimate metastasis
+
+For each patient, they were grouped into whether they have any new metastasis ('y' in RECIST) or not. Then, for each group, their respective subclonality estimations were grouped as well:
+
+```{r}
+#function to categorise patient as newly metastasised or not
+
+patient.metastasis <- function(p.id){
+  p.RECIST <- RECIST[which(RECIST$Patient_ID == p.id),]
+  if(p.RECIST$time[1] <= 10){
+    p.RECIST <- p.RECIST[-1,]
+  }
+  m <- "y" %in% unname(unlist(p.RECIST[,5:14]))
+  return(m)
+}
+
+#use the function and group...
+p.metastasis <- sapply(unique(RECIST$Patient_ID), function(x) patient.metastasis(x))
+
+#group subclonality estimations respectively....
+subclonalities <- (sapply(1:length(liquidCNA_results), 
+                    function(x) as.numeric(liquidCNA_results[[x]]$rat)))
+yes.met.rat <- unlist(sapply(which(p.metastasis), function(x) subclonalities[[x]]))
+no.met.rat <- unlist(sapply(which(p.metastasis==F), function(x) subclonalities[[x]]))
+
+ts.each.metastasis
+ts.yes.met.rat <-RECIST[ts.each.metastasis,]$rat
+ts.no.met.rat <-RECIST[ts.each.metastasis==F,]$rat
+```
+
+Doing the Wilcox test, **we get a significant result**. I.e., distribution of subclonalities between patient groups of further metastasis and not, significantly differs:
+
+```{r}
+p.met.res <- wilcox.test(yes.met.rat, no.met.rat, alternative = "two.sided")
+ts.met.res <- wilcox.test(ts.yes.met.rat, ts.no.met.rat, alternative = "two.sided")
+boxplot(no.met.rat, 
+        yes.met.rat,
+        ylim = c(0, 3),
+        main = "Subclonality against new metastasis (by patient)",
+        at = c(1,2),
+        names = c("NO", "YES"),
+        las = 1,
+        col = c("pink","lightblue"),
+        border = "brown",
+        horizontal = FALSE,
+        notch = TRUE,
+        ylab = "Subclonal ratio estimation")
+text(2.1, 2.9, paste0("Wilcox test: \np-value = ",round(p.met.res$p.value, 5)))
+```
+
+Thus, survival analysis was done next
+
+# 3.0 Survival analysis
+
+load Data and package
+```{r}
+library("survival")
+library("survminer") 
+load("../DATA/survival_df.RData")
+```
+
+Survival.df
+```{r}
+head(survival.df2)
+```
+
+1.  The first column are patient ids
+2.  tstart, tstop are in days of event. **Days start from RECIST's "Date.Meta" column. Could you confirm if this is the date of first primary metastasis for the patient please?**
+3.  status: 1 is recurrent event; 0 is right censored data
+4.  Event: 2 is metastasis; 1 is no event
+
+Furthermore, there are three covariates included in the data frame: sub.group (whether level of subclonality is high (2) or low (1)), subclonality ratio estimate and purity estimate. For sub.group,  2 is high subclonality group; and 1 is low subclonality group. Group2 has subclonality > 0.3656956 and 1 below it.
+
+### KM was done first:
+
+```{r}
+model.2 = survfit(Surv(tstart,tstop,status) ~ sub.group,  data = survival.df2)
+ggsurvplot(model.2, data = survival.df2,
+     xlab = "Days", 
+     ylab = "Overall survival probability")
+```
+
+**The problem with KM is that events are single-off. So even if metastasis (our event in question) reoccurs, the analysis doesnot take this into account when computing. Therefore, Cox proportional hazards regression model (which allows for recurrent events) was explored. **
+
+The three covariates were used to model the Cox regression. Again, **purity was the only factor coming out to be significant**
+
+```{r}
+model.1 = coxph(Surv(tstart,tstop,status) ~ (sub.group + subclone + purity + cluster(id)), 
+                method="breslow", 
+                robust=TRUE, 
+                data = survival.df2)
+summary(model.1)
+
+```
+
+**Plotting the survival(metastasis) probability...**
+```{r}
+ggsurvplot(survfit(model.1), data = survival.df2)
+```
+
+**Plotting the cumulative hazard rate...**
+```{r}
+sfit <- survfit(model.1)
+cumhaz.upper <- -log(sfit$upper)
+cumhaz.lower <- -log(sfit$lower)
+cumhaz <- sfit$cumhaz # same as -log(sfit$surv)
+
+plot(cumhaz, xlab="Days ahead", ylab="cumulative hazard",
+     ylim=c(min(cumhaz.lower), max(cumhaz.upper)))
+lines(cumhaz.lower)
+lines(cumhaz.upper)
+
+```
+
+
+# From Solon's feedback: a Test based on binomial distribution
+
+Your null hypothesis is: the average subclonality proportion for Progression = Yes is equal to the average subclonality proportion for Progression = No. 
+
+```{r}
+yes.prog <- which(RECIST$Progression == "YES")
+no.prog <- which(RECIST$Progression == "NO")
+
+yes.progression <- RECIST[yes.prog,]$rat
+no.progression <- RECIST[no.prog,]$rat
+
+no.progression <- no.progression[!(is.na(no.progression))]
+yes.progression <- yes.progression[!(is.na(yes.progression))]
+
+prop.test(x = c(mean(no.progression)*100, mean(yes.progression)*100),
+          n = c(length(no.progression), length(yes.progression)))
+
+binom.test(x, n, p)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,648 @@
+---
+title: "weekly_july2"
+author: "Dohun Lee"
+date: '2022-07-08'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+source("SCRIPTS/3_liquidCNA.R")
+load("../DATA/bam_by_patient.RData")
+load("../DATA/antwerpData.RData")
+load("../DATA/weekly_july2.RData")
+load("../DATA/liquidCNA_results_july1.RData")
+load("../DATA/liquidCNA_results_july2.RData")
+```
+
+save(cn.df.7, seg.df.7, seg.cns.7, seg.df.upd.7, seg.df.corr.7, seg.cns.corr.7, seg.dcn.7, seg.sub.7, seg.dcn.toUse.7, seg.plot.7, go_results_800,go_results_1500, go_results_3000, two_samp_patients, timely_patients, go_patients, cn.df.74, seg.df.74, seg.sub.74, seg.plot.74, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, timely_res2.opt1, timely_res2.opt2, timely_res2.opt3, go.purity.001, rats.across.cut, file = "../DATA/weekly_july2.RData")
+
+
+This is a RMDmarkdown to track and show progress between 06/07/22 \~ 13/07/22.
+
+These were the main things to tackle:
+
+1.  Quality check QDNAseq for erroneous BAM file
+2.  Make Figure 3C
+  +   The idea behind the plot is to see whether LiquidCNA detects clearly marked amplifications/deletions across the genome.  
+3.  Why is lowest purity 0.05?
+4.  EM, for those that don't converge within 800 steps, does 1000 steps, 2000 steps, 3000 steps give the same result? it should.
+5.  Why are 5 of the go!patients getting NULL results?
+6.  Try cutOff 0~0.3. Why were we doing this? For 2 samps, and see how rat changes acorss cutOffs
+7.  Timely batch. 
+  +   Run batch1, then set TopSample as BaseSample for batch2
+  +   Use time sample with highest ratio as baseSamp for batch2
+  +   Use Sample1 as baseSamp for batch2 too.
+8.  Append purity and estimations to RECIST
+9.  A scatter plot of absolute RAT and purity. Asking, is there an association between purity and sub-clonality?
+
+# 1. Erroneous BAM
+
+Patient 2789 with erroneous BAM file: SLX.17921.D701tp_D505tp.H5J55BBXY.s_8.r_1
+
+Must be a sequencing error. The plot shows raw copy number profile (read counts across the genome). For Sample7, has no read. **Note: I was wrong, this sample isn't the one getting NULL in timely_res**
+
+```{r}
+load("../DATA/2_QDNA_readCounts/readCounts_patient_2789.RData")
+
+#Plot1
+#Plot a raw copy number profile (read counts across the genome)
+plot(readCounts, logTransform=FALSE, ylim=c(-50, 2000))
+```
+
+# 2. Make Figure 3C
+
+Figure 3C will be made for Patient 1005 as an example.
+
+## Exploring liquidCNA steps of CNA handling
+
+Liquid CNA takes cn.df and seg.df from QDNAseq as inputs. The package renomarlises and corrects the CNA profile across multiple steps to choose segments which are used for sub-clonality estimation. In this section, the different steps/CNA profiles will be explored.
+
+### seg.df & cn.df: Raw outputs from QDNAseq
+
+```{r}
+head(cn.df.7)
+head(seg.df.7) 
+```
+
+### seg.cns
+
+CNS of each ensemble segment (segments < 500kb are already filtered). Obtained by fitting a normal distribution to CNS of bins in the ensemble segment. 
+
+There are 54 ensemble segments for this patient
+```{r}
+head(seg.cns.7) 
+```
+
+### seg.sub
+
+Gives bin index for each ensemble segments
+```{r}
+head(seg.sub.7)
+```
+
+### seg.df.upd
+Segment CNS values are updated according to the ensemble segments' CNS values ( i.e., seg.cns )
+
+```{r}
+head(seg.df.upd.7)
+```
+
+### Purity corrected: seg.df.corr, seg.cns.corr
+```{r}
+head(seg.df.corr.7) #seg.df.upd corrected by purity
+head(seg.cns.corr.7) #seg.cns corrected by purity
+```
+
+### seg.dcn
+
+Delta CNS with respect to the baseSample. Is calculated using seg.cns.corr
+```{r}
+head(seg.dcn.7)
+```
+
+### seg.dcn.toUse
+
+Segments chosen by liquidCNA to be subclonal, so is used to estimate sub-clonality:
+```{r}
+head(seg.dcn.toUse.7)
+```
+
+Which of the ensemble segments are sub-clonal are stored in **seg.plot**. If the values for *filtered* and *order* are FALSE, the segment is clonal; if *filtered* is TRUE but *order* is FALSE, segment is unstable; if *filtered* and *order* is TRUE, segment is sub-clonal.
+
+```{r}
+head(seg.plot.7)
+```
+
+## Okay, now make Figure 3C
+
+### plot.3C(), a function to generate the figure
+
+```{r}
+plot.3C <- function(timeSample, cn.df, seg.df, seg.sub, seg.plot, patient_id = NULL){
+  p.id <- patient_id
+  cns.of.bins <- function(x.seg.id){
+    #requires: cn.df; seg.df; seg.sub; seg.plot
+    #Input: x.seg.id <- id (row number) out of all ensemble segments (seg.sub)  for clonal, unstable or sub-clonal segments
+  #Output: cns of the bins of segments that are either clonal, unstable or sub-clonal.
+    
+    #make an empty vector length of the genome (total number of bins)
+    bins <- rep(NA, nrow(cn.df))
+    
+    if(length(x.seg.id) == 0){
+      return(bins)
+    } else{
+    #fill in the bin
+      for(x in 1:length(x.seg.id)){
+      seg.loci.df <- seg.sub[x.seg.id,]
+      start <- as.numeric(seg.loci.df[x,][1])
+      end <- as.numeric(seg.loci.df[x,][2])
+      bins[start:end] <- seg.df[start,ts]
+    }
+    return(bins)
+    }
+  }
+
+  ts <- timeSample
+  
+  ################################################
+  #Which of all ensemble segments clonal, unstable or sub-clonal?
+  
+  #subclonal
+  subclonal.seg <- seg.plot[seg.plot$filtered == TRUE & seg.plot$order == TRUE,]
+  subclonal.seg.id <- as.numeric(rownames(subclonal.seg))
+  
+  #unstable
+  unstable.seg <- seg.plot[seg.plot$filtered == TRUE & seg.plot$order == FALSE,]
+  unstable.seg.id <- as.numeric(rownames(unstable.seg))
+  
+  #clonal
+  clonal.seg <- seg.plot[seg.plot$filtered == FALSE & seg.plot$order == FALSE,]
+  clonal.seg.id <- as.numeric(rownames(clonal.seg))
+  
+  ################################################
+  #cns.of.bins() to get CNS of bins involved in the three segment types
+  
+  subclonal.bins.cns <- cns.of.bins(subclonal.seg.id)
+  unstable.bins.cns <- cns.of.bins(unstable.seg.id)
+  clonal.bins.cns <- cns.of.bins(clonal.seg.id)
+  
+  ################################################
+  #Plot
+  
+  plot(cn.df[,ts], col = "gray", xlab = "Bin", ylab = "CN states (raw from QDNAseq)",
+       main= paste0("Segments used by LiquidCNA to calculate subclonality. \n Sample", ts," from Patient ", p.id))
+  points(seg.df[,ts], col = "lightblue")
+  points(unstable.bins.cns, col = "blue")
+  points(clonal.bins.cns, col = "black")
+  points(subclonal.bins.cns, col = "firebrick3")
+  legend("topright", legend=c("sub-clonal", "unstable", "clonal", "seg.df", "cn.df"), 
+         col=c("firebrick3", "blue", "black", "lightblue", "gray"), pch=21, cex=0.8)
+}
+
+```
+
+```{r}
+plot.3C(1, cn.df.7, seg.df.7, seg.sub.7, seg.plot.7, 1005)
+plot.3C(2, cn.df.7, seg.df.7, seg.sub.7, seg.plot.7, 1005)
+plot.3C(3, cn.df.7, seg.df.7, seg.sub.7, seg.plot.7, 1005)
+```
+
+The Figure asks whether liquidCNA detects clearly marked amplifications/deletions across the genome.  
+
+### 2 extreme cases, 
+
+ie one patient with many subclonal segments and one patient with not that many (across 2-3 timepoints).
+
+**Maximum sub-clonal segments used: 65; minimum is 5**
+```{r, include = FALSE}
+go_results_1500
+
+seg_used <- unlist(sapply(1:length(go_results_1500), function(x) go_results_1500[[x]]$seg_used))
+```
+
+Patient 3614 with 65 sub-clonal segments
+```{r}
+max(seg_used) #go_results_1500[[48]]
+
+t <- 1
+plot.3C(t, cn.df.74, seg.df.74, seg.sub.74, seg.plot.74, patient_ids[[74]]); text(300, 6.5, paste0("purity: ", go_results_1500[[48]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[48]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[48]]$rat[[match(paste0("Sample", t), go_results_1500[[48]]$time)]]), 4)))
+t <- 2
+plot.3C(t, cn.df.74, seg.df.74, seg.sub.74, seg.plot.74, patient_ids[[74]]); text(300, 2.7, paste0("purity: ", go_results_1500[[48]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[48]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[48]]$rat[[match(paste0("Sample", t), go_results_1500[[48]]$time)]]), 4)))
+t <- 3
+plot.3C(t, cn.df.74, seg.df.74, seg.sub.74, seg.plot.74, patient_ids[[74]]); text(300, 4.3, paste0("purity: ", go_results_1500[[48]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[48]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[48]]$rat[[match(paste0("Sample", t), go_results_1500[[48]]$time)]]), 4)))
+```
+
+Patient 388 with 5 sub-clonal segments
+```{r}
+min(seg_used) #go_results_1500[[2]]
+
+t <- 1
+plot.3C(t, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, patient_ids[[2]]); text(300, 2.7, paste0("purity: ", go_results_1500[[2]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[2]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[2]]$rat[[match(paste0("Sample", t), go_results_1500[[2]]$time)]]), 4)))
+t <- 2
+plot.3C(t, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, patient_ids[[2]]); text(300, 3.2, paste0("purity: ", go_results_1500[[2]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[2]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[2]]$rat[[match(paste0("Sample", t), go_results_1500[[2]]$time)]]), 4)))
+t <- 3
+plot.3C(t, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, patient_ids[[2]]); text(300, 2.63, paste0("purity: ", go_results_1500[[2]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[2]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[2]]$rat[[match(paste0("Sample", t), go_results_1500[[2]]$time)]]), 4)))
+```
+# 3.  Why is lowest purity 0.05?
+
+At line 127, range of purity values evaluated were: **pVec = seq(0.05, 0.5, by=0.005)**
+
+How do the results change when the lower boundary is reduced? How does the distribution of rats and purities change?
+
+Lower boundary changed to 0.01: **pVec = seq(0.01, 0.5, by=0.005) **
+
+### Current distribution of absolute ratios and purity:
+
+```{r}
+current.rat <- unlist(sapply(1:length(go_results_1500), function(x) as.numeric(go_results_1500[[x]]$rat)))
+current.rat <- current.rat[current.rat!=0]
+plot(density(current.rat), xlim = c(0,1), main = "Density of absolute ratio estimates \n when purity lower bound is 0.05")
+
+current.purities <- unlist(sapply(1:length(go_results_1500), function(x) as.numeric(go_results_1500[[x]]$purity_mean)))
+
+plot(density(current.purities),  main = "Density of purity estimates \n when purity lower bound is 0.05");text(0.5, 8, paste0("mean: ", round(mean(current.purities), 4), "\nmedian: ", median(current.purities)))
+```
+
+```{r}
+
+purity.001.rat <- unlist(sapply(1:length(go.purity.001), function(x) as.numeric(go.purity.001[[x]]$rat)))
+purity.001.rat <- purity.001.rat[purity.001.rat!=0]
+plot(density(purity.001.rat), xlim = c(0,1), main = "Density of absolute ratio estimates \n when purity lower bound is 0.01")
+
+purity.001 <- unlist(sapply(1:length(go.purity.001), function(x) as.numeric(go.purity.001[[x]]$purity_mean)))
+
+plot(density(purity.001),  main = "Density of purity estimates \n when purity lower bound is 0.05"); text(0.5, 8, paste0("mean: ", round(mean(purity.001), 4), "\nmedian: ", median(purity.001)))
+```
+
+
+# 4. EM Steps
+
+### 800 steps
+runliquidCNA w/ maximum EM steps set to 800. Which patient/timeSample are there NAs, are there any whole patient NULLs?
+
+**5 NULL Patients:**
+```{r}
+null_patients <- which(sapply(1:length(go_results_800), function(x) is.null(go_results_800[[x]])))
+patient_ids[go_patients[null_patients]]
+```
+
+**7 patients have NA absolute sub-clonality estimations:**
+```{r}
+na.find <- sapply(1:length(go_results_800), function(x) is.na(go_results_800[[x]]$rat))
+
+na.go <- sapply(1:length(na.find), function(x) which(na.find[[x]]))
+
+na.go <- sapply(1:length(na.go), function(x) length(na.go[[x]]) > 0)
+  
+na.patients <- which(na.go)
+
+length(na.patients)
+
+```
+
+### 1500 steps
+
+**Same 5 NULL Patients: **
+```{r}
+null_patients <- which(sapply(1:length(go_results_1500), function(x) is.null(go_results_1500[[x]])))
+patient_ids[go_patients[null_patients]]
+```
+
+**None of the patients have NA values**
+```{r}
+na.find.2 <- sapply(1:length(go_results_1500), function(x) is.na(go_results_1500[[x]]$rat))
+
+all(unlist(na.find.2))
+```
+
+What absolute ratios are we getting for patients that used to be NA with 800 steps?
+
+```{r}
+rat.1500 <- as.numeric(unlist(sapply(1:length(na.patients), function(x) go_results_1500[[na.patients[x]]]$rat)))
+rat.1500
+```
+
+### 3000 steps
+
+Do we still have the same absolute ratio estimations? **Yes! Good!**
+
+```{r}
+rat.3000 <- as.numeric(unlist(sapply(1:length(na.patients), function(x) go_results_3000[[na.patients[x]]]$rat)))
+
+all(rat.1500 == rat.3000)
+```
+
+# 6. cutOFF
+```{r, eval = FALSE}
+p_num <- two_samp_patients[1]
+
+cutOffVec <- seq(0,0.35,by=0.005)
+
+cutOff_res <- vector(mode = "list", length = length(cutOffVec))
+
+for(i in 1:length(cutOffVec)){
+  tryCatch({
+    cut <- cutOffVec[i]
+    cat("Starting cutOffVal :", cut, "\n")
+    cutOff_res[[i]] <- run_2samp_liquidCNA(p_num)
+  }, error=function(e){cat("ERROR at:", i, "\n")})
+}
+
+names(cutOff_res) <- cutOffVec
+rats.across.cut <- sapply(1:length(cutOffVec), function(x) as.numeric(cutOff_res[[x]]$rat[1]))
+```
+
+```{r}
+plot(rats.across.cut)
+```
+
+
+
+
+# 7. Stitch timely
+
+## Option1: Run batch1, then set TopSample as BaseSample for batch2
+
+```{r, eval = FALSE}
+if(timely == TRUE){
+  if(batch1 == TRUE){
+    seg.df <- seg.df[,1:nbatch]
+    cn.df <- cn.df[,1:nbatch]
+  } else {
+    tail.id <- tail(1:ncol(seg.df), nbatch)
+    col.id <- c(base.id,tail.id)
+    seg.df <- seg.df[,col.id]
+    cn.df <- cn.df[,col.id]
+  }
+}
+
+#RUN!
+timely_res2.opt1 <- vector(mode = "list", length = length(timely_patients))
+
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    cat("\n Starting", x, "\n")
+    
+    batch1.top <- tail(timely_res1[[x]]$time, 2)[1]
+    base.id <- as.numeric(strsplit(batch1.top, "e")[[1]][2])
+    
+    timely_res2.opt1[[x]] <- run_liquidCNA(timely_patients[x], 
+                                 timely = TRUE,
+                                 batch1 = FALSE,
+                                 nbatch = nbatch2[x])
+    
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+names(timely_res2.opt1) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+
+```
+
+
+
+## Option2: Use time sample with highest ratio as baseSamp for batch2
+
+```{r, eval = FALSE}
+if(timely == TRUE){
+  if(batch1 == TRUE){
+    seg.df <- seg.df[,1:nbatch]
+    cn.df <- cn.df[,1:nbatch]
+  } else {
+    tail.id <- tail(1:ncol(seg.df), nbatch)
+    col.id <- c(base.id,tail.id)
+    seg.df <- seg.df[,col.id]
+    cn.df <- cn.df[,col.id]
+  }
+}
+
+#RUN!
+timely_res2.opt2 <- vector(mode = "list", length = length(timely_patients))
+
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    cat("\n Starting", x, "\n")
+    
+    batch1.rats <- as.numeric(timely_res1[[x]]$rat)
+    batch1.max.rat <- timely_res1[[x]]$time[which(batch1.rats == max(batch1.rats))]
+    base.id <- as.numeric(strsplit(batch1.max.rat, "e")[[1]][2])
+    
+    timely_res2.opt2[[x]] <- run_liquidCNA(timely_patients[x], 
+                                 timely = TRUE,
+                                 batch1 = FALSE,
+                                 nbatch = nbatch2[x])
+    
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+names(timely_res2.opt2) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+
+```
+
+
+## Option3: Use Sample1 as baseSamp for batch2 too.
+
+```{r, eval = FALSE}
+if(timely == TRUE){
+  base.id <- 1
+  if(batch1 == TRUE){
+    seg.df <- seg.df[,1:nbatch]
+    cn.df <- cn.df[,1:nbatch]
+  } else {
+    tail.id <- tail(1:ncol(seg.df), nbatch)
+    col.id <- c(base.id,tail.id)
+    seg.df <- seg.df[,col.id]
+    cn.df <- cn.df[,col.id]
+  }
+}
+
+#RUN!
+timely_res2.opt3 <- vector(mode = "list", length = length(timely_patients))
+
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    cat("\n Starting", x, "\n")
+    timely_res2.opt3[[x]] <- run_liquidCNA(timely_patients[x], 
+                                 timely = TRUE,
+                                 batch1 = FALSE,
+                                 nbatch = nbatch2[x])
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+names(timely_res2.opt3) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+
+```
+
+## Compare options
+
+### option 1
+```{r}
+opt1.res1.rats <- as.numeric(timely_res1[[1]]$rat)
+opt1.res1.rats <- opt1.res1.rats[-length(opt1.res1.rats)]
+opt1.res2.rats <- as.numeric(timely_res2.opt1[[1]]$rat)
+opt1.total.rats <- c(opt1.res1.rats, opt1.res2.rats)
+plot(opt1.total.rats, type = "l", main = "Option 1", 
+     ylab = "Absolute ratio estimates")
+
+```
+
+### option 2
+```{r}
+opt2.res1.rats <- as.numeric(timely_res1[[1]]$rat)
+opt2.res1.rats <- opt2.res1.rats[-length(opt2.res1.rats)]
+opt2.res2.rats <- as.numeric(timely_res2.opt2[[1]]$rat)
+opt2.total.rats <- c(opt2.res1.rats, opt2.res2.rats)
+plot(opt2.total.rats, type = "l", main = "Option 2", 
+     ylab = "Absolute ratio estimates")
+
+```
+
+### option 3
+```{r}
+opt3.res1.rats <- as.numeric(timely_res1[[1]]$rat)
+opt3.res1.rats <- opt3.res1.rats[-length(opt3.res1.rats)]
+opt3.res2.rats <- as.numeric(timely_res2.opt3[[1]]$rat)
+opt3.total.rats <- c(opt3.res1.rats, opt3.res2.rats)
+plot(opt3.total.rats, type = "l", main = "Option 3", 
+     ylab = "Absolute ratio estimates")
+
+```
+
+**I think option 3 makes most sense**, as sub-clonal segments are determined using deltaCN against baseSample. Thus, it makes sense for baseSample to be consistent (i.e. the reference to be consistent) across batches.
+
+## Now Stitch with option 3:
+
+```{r}
+timely_res <- sapply(1:length(timely_patients), function(x) rbind(timely_res1[[x]][-which(timely_res1[[x]]$relratio == 0),], timely_res2.opt3[[x]]))
+
+names(timely_res) <- paste0("patient_",patient_ids[timely_patients])
+```
+
+An example:
+```{r}
+timely_res[[3]]
+plot(timely_res[[3]]$rat, type = "l")
+
+```
+
+**Assumption of Option 3:** This option assumes that the second batch will have greater sub-clonality than batch 1. Which allows it to be in the second half of sample ordering.
+
+# 8. Append to RECIST
+
+```{r}
+append.RECIST <- function(){
+  RECIST$rat <- NA
+  RECIST$purity_mean <- NA
+  
+  for(p in 1:length(patient_ids)){
+    tryCatch({
+    #get one patient
+    p.id <- patient_ids[p]
+    #subset of ichorCNA for this patient
+    patient.ichor <- ichorCNA[ichorCNA$Patient_ID == p.id,]
+    patient.ichor <- patient.ichor[order(patient.ichor$Sample_ID, decreasing = F),] #order by date
+    patient.ichor.dates <- patient.ichor$Date
+    
+    #subset of RECIST for this patient
+    patient.RECIST <- RECIST[RECIST$Patient_ID == p.id,]
+    patient.RECIST.date <- patient.RECIST$Blood.draw
+    
+    patient.RECIST.date.new <- structure(numeric(length(patient.RECIST.date)), class="Date")
+    
+    for(x in 1:length(patient.RECIST.date)){
+      new.date <- as.Date(patient.RECIST.date[x], format = "%m/%d/%y")
+      patient.RECIST.date.new[x] <- new.date
+    }
+    
+    #For which timeSamples do we have RECIST data?
+    samp.w.RECIST <- match(patient.RECIST.date.new, patient.ichor.dates)
+    
+    #Get patients' liquidCNA results... just need to figure this out
+    p.res <- liquidCNA_results[[p]]
+    #order the samples so it matches RECIST ordering
+    p.res.ord <- p.res[order(p.res$time, decreasing = F),]
+    p.res.ord.rat <- as.numeric(p.res.ord$rat)
+    p.res.ord.purity <- as.numeric(p.res.ord$purity_mean)
+    
+    #rat and purity for samples with RECIST
+    rats <- p.res.ord.rat[samp.w.RECIST]
+    purities <- p.res.ord.purity[samp.w.RECIST]
+    
+    #append
+    RECIST.rownum <- (rownames(patient.RECIST))
+    if(length(RECIST.rownum) != 0){
+      RECIST[RECIST.rownum,]$purity_mean <- purities
+      RECIST[RECIST.rownum,]$rat <- rats
+    }
+    }, error=function(e){cat("ERROR at:", p, "\n")})
+  }
+}
+
+```
+
+
+# 9. Correlation between purity and subclonal fraction
+
+## Functions: get_rats(), get_purities(), rsq ()
+
+Function to get absolute sub-clonality. It excludes rats of baseSamples (== Sample1). Sample1's estimations are excluded as they are always 0 and will bias the correlation.
+
+```{r}
+get_rats <- function(results){
+  rats <- unlist(sapply(1:length(results), function(x) as.numeric(results[[x]][which(!(results[[x]]$time=="Sample1")),]$rat)))
+  return(rats)
+}
+
+get_purities <- function(results){
+  purities <- unlist(sapply(1:length(results), function(x) as.numeric(results[[x]][which(!(results[[x]]$time=="Sample1")),]$purity_mean)))
+  return(purities)
+}
+
+rsq <- function (x, y) cor(x, y) ^ 2
+```
+
+### Plot correlation between purity and subclonality
+```{r}
+#initialise empty vector to fill in
+rats <- NULL
+purities <- NULL
+
+#fill in subclonality ratio estimated for timely patients, two sample patients and the rest.
+rats <- c(rats, get_rats(liquidCNA_results))
+purities <- c(purities, get_purities(liquidCNA_results))
+
+#calculate coefficient of correlation
+rsqrd <- rsq(rats, purities)
+
+#plot
+plot(rats, purities, main = "Correlation between purity and subclonal fraction",
+     ylab = "Purities", xlab = "Absolute subclonal fraction", col = "darkblue")
+text(8, 0.4, paste0("r2 = ",rsqrd))
+```
+
+### Problem: are subclonalities outside of range 0~1. 35/182 absolute ratios calculated:
+
+```{r}
+#there are 35/182 absolute rats =< 0 | > 1
+length(rats[!(rats < 1 & rats >= 0)])
+```
+
+Try replotting the correlation plot without these absolute ratios
+```{r}
+ids <- which(rats < 1 & rats >= 0)
+
+plot(rats[ids], purities[ids], main = "Correlation between purity and subclonal fraction \n 0 =< subclonality < 1",
+     ylab = "Purities", xlab = "Absolute subclonal fraction", col = "darkblue")
+text(0.9, 0.4, paste0("r2 = ",rsq(rats[ids], purities[ids])))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

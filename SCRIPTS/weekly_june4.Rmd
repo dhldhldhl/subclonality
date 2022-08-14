@@ -1,0 +1,134 @@
+---
+title: "weekly_june4"
+author: "Dohun Lee"
+date: '2022-06-25'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+source("SCRIPTS/3_liquidCNA.R")
+load("../DATA/bam_by_patient.RData")
+load("../DATA/antwerpData.RData")
+load("../DATA/weekly_june4_data")
+```
+
+This is a RMDmarkdown to track and show progress between 22/06/22 \~ 30/06/22.
+
+There were 3 main things to tackle:
+
+1.  Cross checking BAM files with patients
+
+-   TODO: identify erroneous bam file and send to Solon
+
+2.  Retry batching of timely patients
+3.  Retry 2 sample patients, trying comparison with base sample
+4.  Understanding Equation 12
+
+# 1. Cross referencing bam files
+
+Checking if all BAM files are accounted for.
+```{r BAM}
+head(bam_by_patient)
+
+#total number of bam data is equal between two
+length(unname(unlist(bam_by_patient))) == nrow(ichorCNA)
+
+#number of bam files assigned by me to each patient
+vec_mine <- sapply(1:length(bam_by_patient), function(x) length(bam_by_patient[[x]]))
+
+#number of ichorCNA data for each patient (TRUTH)
+vec_ichor <- unname(table(sort(ichorCNA$Patient_ID)))
+
+vec_mine==vec_ichor
+```
+
+# 2. Timely patients
+
+There are 7 patients with 6+ BAM files:
+
+Could do non overlapping batches, then stitch them together if absolute sub-clonal ratio can be extracted.
+
+```{r six_plus}
+sample_num_patient <- sapply(1:80, function(x) length(bam_by_patient[[x]]))
+timely_patients <- which(sample_num_patient > 6)
+timely_bam_num <- sample_num_patient[timely_patients]
+```
+
+### Problem 1: and error occurs in function normalmixEM() within estimateRGaussianFit()
+
+Reason: when there's only one segment in seg.dcn.toUse, the function doesn't work. This is the case for Patient 1439.
+
+Works well for some patients...
+
+```{r}
+res1[[5]]
+
+```
+
+NULL for patient 1439 with only one segment to use...
+
+```{r}
+res1[[2]]
+```
+
+**Problem/need addressing:** Absolute ratios are negative or over 1 for some patients. Additionally, some of the time samples will have a <NA> from not the EM not converging within 1000 steps. (Gaussian fitting step typically fails for low subclonal ratio sampes of <= 0.1)
+```{r}
+res1[[1]]
+
+res1[[4]]
+```
+
+
+Questions:
+
+* Why do some time samples have NA whilst others do not?
+* What is an absolute ratio over 1, why does that happen? What is negative ratio?
+
+Potential fix:
+
+In the liquidCNA jupyter example, estimateRGaussFit function was called with: **estimateRGaussianFit(seg.dcn.toUse, samp, final.results, 3)**. However, I think this is a typo, and it is supposed to be **estimateRGaussianFit(seg.dcn.toUse, samp, final.results, nstates = 3)**. As the former sets the initial sigma for Gaussian as 3 for the EM algorithm. Fixing this code we get...:
+
+# 3. 2 time patients
+
+Changed the code in liquidCNA to output answer for patients with just two time samples.
+
+* changed filterSegmentRatios to output a 1 column dataframe > vector for 2 time samples
+* code for variable seg.dcn.toUse altered so that variable is a dataframe and not a vector
+
+Relative subclonal ratio cannot be calculated as there is only 1 non-base time sample. However, absolute subclonal ratio can be calculated as a normal distribution is being fitted to dCN of segments. Only problem here this method can't yet choose an appropriate cutOff (i.e. deciding which segments are clonal or non-clonal, and furthermore, subclonal or unstable).
+
+Trying the Gaussian fitting across all values of cutOff in cutOffVec for patient 1333. The results for one cutOff value (0.025) the final results table will be as following:
+
+```{r }
+eg_2samp_final.results
+```
+
+Absolute subclonal ratio across 96 cutOff values in cutOffVec. Why are some negative? Why do values repeat? How would we choose one?
+
+```{r }
+rats
+table(rats)
+```
+
+# 4.  Understanding Equation 12
+
+TODO: re read the paper
+
+
+
+
+
+
+
+
+
+
+
+

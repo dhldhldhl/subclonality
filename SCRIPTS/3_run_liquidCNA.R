@@ -4,388 +4,250 @@ require(gtools); library(gridExtra); library(devtools)
 source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
 
 ################################################################################
-#setwd
+
+#setwd & load 
 setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+
 #setwd("/rds/project/rds-csoP2nj6Y6Y/ctDNA/dl/subclonality")
 load("../DATA/bam_by_patient.RData")
 
-run_liquidCNA <- function(p_num){
-  seg.df <- read.delim(paste0("../DATA/2_QDNA_CNout/segment_", patient_ids[p_num], ".txt"))
-  cn.df <- read.delim(paste0("../DATA/2_QDNA_CNout/raw_cn_", patient_ids[p_num], ".txt"))
-  
-  seg.df <- seg.df[,-(1:4)]
-  cn.df <- cn.df[,-(1:4)]
-  
-  colnames(seg.df) <- paste0("Sample", 1:ncol(seg.df))
-  colnames(cn.df) <- paste0("Sample", 1:ncol(cn.df))
-  
-  #optional
-  #re-normalise raw and segmented CN values to be centred at CN=2
-  reNorm <- centreSegs(seg.df)
-  seg.df <- as.data.frame(t(t(seg.df)/reNorm)*2)
-  cn.df <- as.data.frame(t(t(cn.df)/reNorm)*2)
-  
-  #Plot the CN distribution of each sample to gain a quick overview
-  explore_plot <- ggplot(reshape2::melt(seg.df), aes(x=value,y=..scaled.., colour=variable)) +
-    geom_density(adjust=1) +
-    theme_bw() + scale_x_continuous(limits=c(0.5, 5)) +
-    labs(x='Segment copy number',y='Density',colour='') + 
-    ggtitle(paste0('Patient ', patient_ids[p_num]))
-  print(explore_plot)
-  
-  #generate a dataframe of ensemble segments
-  #contiguous sections of bins that are constant in ALL samples
-  segchange <- sapply(1:(nrow(seg.df)-1),
-                      function(i) sum(seg.df[i,]!=seg.df[(i+1),])>0)
-  seg.data <- data.frame(start=c(1,which(segchange)+1),
-                         end=c(which(segchange),length(segchange)+1))
-  seg.data$length <- seg.data$end - seg.data$start+1
-  
-  #Filter out small segments
-  seg.sub <- subset(seg.data, length>12) #12 500kb bins
-  cat("Patient",patient_ids[p_num], '| Total number of segments retained: ',nrow(seg.sub))
-  
-  #Update segment values by fitting a normal distribution to bins in the segment
-  seg.fit <- getNormalFitSegments(seg.sub, cn.df)
-  
-  seg.cns <- seg.fit[[1]]
-  names(seg.cns) <- names(seg.df)
-  
-  seg.df.upd <- data.frame(matrix(NA, ncol=ncol(seg.df), nrow=nrow(seg.df)))
-  names(seg.df.upd) <- names(seg.df); row.names(seg.df.upd) <- row.names(seg.df)
-  
-  for(i in 1:nrow(seg.sub)){
-    seg.df.upd[seg.sub$start[i]:seg.sub$end[i],] <- seg.cns[i,]
-  }
-  
-  ##########################################
-  ########### Purity Estimation ############
-  ##########################################
-  w = c(0.8,1,1,0.15,0.05) #weights of different CN states
-  maxCN=8 #assumed maximum CN 
-  adjVec = c(0.5,0.6,0.8,0.9,1,1.2,1.3,1.5,1.8,2) #smoothing kernel adjustments
-  pVec = seq(0.05, 0.5, by=0.005) #range of purity values to be evaluated
-  
-  #Estimated optimal purity values stored in pHat.df
-  #purity vals that minimise mean and median
-  pHat.df <- data.frame(matrix(vector(),ncol=ncol(seg.df.upd), nrow=2))
-  names(pHat.df) <- names(seg.df.upd)
-  row.names(pHat.df) <- c('mean','median')
-  
-  #The plots show the error of the fit over the range of purity values 
-  for(i in 1:ncol(seg.df.upd)){
-    #for each time sample...
-    
-    x <- na.omit(seg.df.upd[,i]) #get rid of NA rows (i.e., segments with NAs)
-    
-    pFits <- as.data.frame(sapply(adjVec,
-                                  function(a) sapply(pVec,
-                                                     function(p) evalPurityDensity(p,w,a,x,maxCN))))
-    #each row: the 1 purity value evaluated
-    #each column: 1 adjVec, a smoothing kernel adjustment
-    #each value: error for given purity/adjVec
-    
-    pFits$p <- pVec
-    mins <- c(pVec[which.min(apply(pFits[,1:length(adjVec)],1,mean))],
-              pVec[which.min(apply(pFits[,1:length(adjVec)],1,median))])
-    #which row (purity) has minimum mean error and minimum median error?
-    
-    plF <- ggplot(melt(pFits,id='p'), aes(x=p, y=value)) + geom_point(size=2, alpha=0.3)+
-      theme_bw() +
-      geom_vline(xintercept = mins, linetype=c('dashed','dotted'), colour=c('red','blue')) +
-      labs(title= paste0('Patient ', patient_ids[p_num], " | ", names(seg.df.upd)[i]))
-    print(plF)
-    pHat.df[,names(seg.df.upd)[i]] <- mins
-  }
-  
-  #Correct CN values by purity
-  #removing CN contamination by normal
-  #eq being used: CN_corr = 1/p * (CN-2) + 2
-  pVec <- as.numeric(pHat.df[1,,drop=T])
-  seg.df.corr <- as.data.frame(t(t(seg.df.upd-2)*1/pVec)+2)
-  seg.cns.corr <- as.data.frame(t(t(seg.cns-2)*1/pVec)+2)
-  
-  #remove low purity samples if number of number of samples is many
-  if( length(pVec) > 6 ){
-    purity_threshold <- 0.1
-    abovePurTh <- pVec >= purity_threshold
-    seg.df.corr <- seg.df.corr[,abovePurTh]
-    seg.cns.corr <- seg.cns.corr[,abovePurTh]
-  }
-  
-  #Plot purity-corrected segment distribution
-  purity_plot <- ggplot(melt(as.data.frame(seg.df.corr)), aes(x=value, colour=variable)) +
-    geom_density(adjust=1) + theme_bw() +
-    scale_x_continuous(limits=c(0,8)) + geom_vline(xintercept = 1:6) +
-    labs(x='Purity-corrected segment CN',y='Density',colour='') + 
-    ggtitle(paste0('Patient ', patient_ids[p_num]))
-  print(purity_plot)
-  
-  #Designate reference sample
-  #& calculate dCN
-  baseSample <- names(seg.df.corr)[1]
-  seg.dcn <- seg.cns.corr - seg.cns.corr[,baseSample]
-  seg.dcn.nonBase <- seg.dcn %>% select(-one_of(baseSample))
-  
-  #Choose samples to investigate (all non-base samples by default) 
-  colToUse <- names(seg.dcn.nonBase)
-  #generate all possible permutations
-  nCol <- length(colToUse)
-  seg.dcn.toOrder <- seg.dcn.nonBase[,colToUse]
-  ordVec <- permutations(nCol,nCol,colToUse)
-  
-  #Permutation is too long
-  if( nrow(ordVec) > 1000 ){
-    
-    chrono <- which(apply(ordVec, 1, function(x) identical(x, colToUse)))
-    nonchrono <- (1:nrow(ordVec))[-chrono]
-    rows <- sample(nonchrono, 1000, replace = F)
-    subOrdVec <- ordVec[rows,]
-    subOrdVec <- rbind(subOrdVec, ordVec[chrono,])
-    ordVec <- subOrdVec
-    
-  }
-  
-  #Initial filtering to find best sample order 
-  #Set parameters to be used when evaluating sample order and segment monotony
-  filterMethod <- 'sd' #filter by saying... if sd < theta, segment = clonal
-  cutOffVec <- seq(0.025,0.5,by=0.005) #thetas to try for initial-filtering
-  epsilon <- 0.05 #error margin for monotony
-  
-  #Diagnostic plot
-  #at different thetas shows:
-  #the proportion of subclonal segments (of non-clonal segments)
-  #total number of non-clonal (light blue)
-  #and subclonal (dark blue) segments
-  fitInfo <- list()
-  for (cutOff in cutOffVec){
-    seg.dcn.Eval <- filterSegmentRatios(seg.dcn.toOrder, cutOff, filterMethod, 0)
-    #Filter relative segment values (compared to baseline) to discard clonal 
-    #(nonchanging) segments that stay relatively constant
-    #Returns: a filtered set of a segments that have values exceeding the threshold
-    
-    best <- findBestOrder(seg.dcn.Eval, ordVec, epsilon, nCol, 0)
-    #Input: segments where clonal segments are initially filtered
-    #Returns: 
-    #$cons: row-names of all segments considered, 
-    #max: maximum fit gained, 
-    #$ord: order with the maximum fit, 
-    #$segs:segments monotone according to max fit
-    fitInfo[[as.character(cutOff)]] <- best
-  }
-  
-  fitInfo.df <- data.frame(cutOff = cutOffVec,
-                           maxFit = sapply(fitInfo, function(x) x$max),
-                           segsAboveCut = sapply(fitInfo, function(x) length(x$cons)),
-                           segsInOrder = sapply(fitInfo, function(x) max(sapply(x$segs, length))))
-  p1 <- ggplot(fitInfo.df, aes(x=cutOff, y=maxFit)) + geom_line(size=2,colour='darkgreen') + theme_bw() +
-    labs(x='Clonal cut-off',y='Subclonal proportion (of non-clonal segments)') + 
-    ggtitle(paste0('Patient ', patient_ids[p_num]))
-  p2 <- ggplot(fitInfo.df, aes(x=cutOff, y=segsAboveCut)) + geom_line(size=2,colour='deepskyblue3') +
-    geom_line(aes(y=segsInOrder), size=2,colour='dodgerblue4') + theme_bw() +
-    labs(x='Clonal cut-off',y='Total number of non-clonal and subclonal segments') + 
-    ggtitle(paste0('Patient ', patient_ids[p_num]))
-  grid.arrange(p1,p2,nrow=1)
-  #p1: proportion of subclonal segments
-  #p2: total number of non-clonal (light blue) and subclonal (dark blue) segments
-  
-  #A typical cut-off ~0.1 is adequate
-  #too low or too high cut-off will select for noise
-  #ideal cut-off should have a reasonable number of subclonal segments (5-20) 
-  #while maximises the subclonal proportion
-  
-  #optimal cut-off for wanted  number of segment
-  minSegmentNumber <- 9
-  recommendCutOff <- getCutOffAuto(fitInfo.df, minSegmentNumber)
-  cat('Recommended cut-off is: ', recommendCutOff)
-  
-  #plot DeltaCN for chosen cut off + ordering + segment classification
-  cutOff <- recommendCutOff
-  fit <- fitInfo[[as.character(cutOff)]]
-  
-  for (ind in 1:nrow(fit$ord)){
-    seg.plot <- seg.dcn[,rev(c(fit$ord[ind,],baseSample))]
-    seg.plot$id <- row.names(seg.plot)
-    seg.plot$filtered <- seg.plot$id %in% fit$cons
-    seg.plot$order <- seg.plot$id %in% fit$segs[[ind]]
-    
-    p <- ggplot(melt(seg.plot, id=c('id','filtered','order')), aes(x=variable, y=value, group=id, colour=paste0(filtered,' | ',order))) +
-      geom_line(size=1.2, alpha=0.75) + theme_bw() +
-      scale_colour_manual(values=c('grey70','#487a8b','firebrick3'), labels=c('clonal','unstable','subclonal')) +
-      labs(x='',y='Change in segment CN (DeltaCN)',colour='Segment type') + 
-      ggtitle(paste0('Patient ', patient_ids[p_num]))
-    print(p)
-  }
-  
-  #if more than one sample order exists
-  ordInd <- 1
-  seg.dcn.toUse <- seg.dcn[fit$segs[[ordInd]],rev(fit$ord[ordInd,])]
-  
-  
-  ##########################################
-  ######## Derive  subclonal-ratio #########
-  ##########################################
-  
-  ###
-  #RELATIVE subclonal-ratio estimates
-  #via segment-by-segment comparison to the highest subclonal-ratio sample
-  topSample <- names(seg.dcn.toUse)[ncol(seg.dcn.toUse)]
-  toEstimate <- setdiff(names(seg.dcn.toUse), c(topSample,baseSample))
-  
-  final.ratios <- estimateRSegmentRatio(seg.dcn.toUse, toEstimate, topSample, 1)
-  
-  final.medians <- aggregate(final.ratios$value, 
-                             by=list(final.ratios$variable), median)
-  
-  #plot estimated relative ratios
-  final.medians$xpos <- 1:nrow(final.medians)
-  
-  ggplot(final.ratios, aes(y=value, x=variable, weight=1)) + geom_violin(fill='firebrick3',alpha=0.2) +
-    theme_bw() + scale_y_continuous(limits=c(0,1.2)) +
-    geom_jitter(width=0.1, height=0, colour='firebrick3', size=2, alpha=0.6) +
-    #geom_point(data=true.df, aes(x=V3, y=V2), colour='firebrick3', size=3) +
-    geom_segment(data=final.medians,aes(x=xpos-0.15,xend=xpos+0.15,y=x,yend=x), size=1.5) +
-    labs(x='',y=paste0('Subclonal-ratio compared to ',topSample)) + 
-    ggtitle(paste0('Patient ', patient_ids[p_num]))
-  
-  #final results table of median relative ratio values
-  final.results <- aggregate(final.ratios$value, by=list(final.ratios$variable), median)
-  names(final.results) <- c('time','relratio')
-  final.results$time <- as.character(final.results$time)
-  final.results[nrow(final.results)+1,] <- c(topSample, 1)
-  
-  ###
-  #Absolute subclonal-ratio estimates
-  #by fitting a Gaussian mixture model of constrained means to each sample
-  #shared mean parameter defines the absolute ratio
-  
-  final.results$rat <- NA
-  final.results$rat_sd <- NA
-  for (samp in final.results$time){
-    final.results <- estimateRGaussianFit(seg.dcn.toUse, samp, final.results, 3)
-  }
-  final.results$rat_sd <- as.numeric(final.results$rat_sd)
-  
-  ggplot(final.results, aes(x=as.factor(time), y=rat)) +
-    geom_bar(stat='identity',colour='black',fill='firebrick3',alpha=0.8, width=0.8) +
-    geom_errorbar(aes(ymin=(rat-(1.96*rat_sd))*((rat-(1.96*rat_sd))>0), ymax=rat+(1.96*rat_sd)),
-                  width=.1) +
-    theme_bw() + theme(axis.title.x=element_blank()) +
-    labs(x='Sample', y='Subclonal-ratio') +
-    ggtitle(paste0('Patient ', patient_ids[p_num]))
-  
-  ##########################################
-  ############# Final results ##############
-  ##########################################
-  final.results[nrow(final.results)+1,] <- c(baseSample, 0,0,0)
-  final.results$purity_mean <- as.character(pHat.df[1,match(final.results$time, 
-                                                          names(pHat.df))])
-  final.results$purity_median <- as.character(pHat.df[2,match(final.results$time, 
-                                                            names(pHat.df))])
-  return(final.results)
-}
-
-liquidCNA_results <- vector(mode = "list", length = 80)
-
-for(patient_x in 1:80){
-  tryCatch({
-    cat("Starting patient :", patient_x, "\n")
-    liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
-  }, error=function(e){cat("ERROR at:", patient_x, "\n")})
-}
-
-names(liquidCNA_results) <- paste0("patient_", patient_ids)
-
-save(liquidCNA_results, file = "../DATA/liquidCNA_results.RData")
-
+#function run_liquidCNA
+source("SCRIPTS/3_liquidCNA.R")
 
 ################################################################################
-load("../DATA/bam_by_patient.RData")
-load("../DATA/liquidCNA_results.RData")
-liquidCNA_results
 
+#initialise list to store results
+liquidCNA_results <- vector(mode = "list", length = 80)
 
-null_res <- sapply(1:80, function(x) is.null(liquidCNA_results[[x]]))
+################################################################################
 
-####################################
-#error patients
-error_patients <- which(null_res)
+#Categorise patients
 
-error_bam <- sapply(error_patients, function(x) bam_by_patient[[x]])
-names(error_bam) <- error_patients
-#where is the error coming from?
-
-#Source 1)
-#for patients with 2 samples
-# Error in segs[(rat.sd > cutOff), , drop = F] :
-#   incorrect number of dimensions
-#from filterSegmentRatios() function
-
-#Source 2)
-#for others patients, it seems to have been an error coming from baseSample.
-#as we filtered out samples, baseSample wasn't there anymore. fixed.
-
-#Source 3)
-#patient with more than 6 samples, but for all purity is below 0.1 threshold
-#e.g. patient 1439
-
-#how many patients have only two time samples?
+#Patients with only two samples
 sample_num_patient <- sapply(1:80, function(x) length(bam_by_patient[[x]]))
 two_samp_patients <- which(sample_num_patient == 2)
-#yep, all patients with only two time samples get error
-#TODO: figure out why
 
-####################################
-#Patients with more than two time samples, but null results:
-two_plus_index <- which(!(error_patients %in% two_samp_patients))
-two_plus_patients <- error_patients[two_plus_index]
+#Patients with over 6 samples
+timely_patients <- which(sample_num_patient > 6)
 
-sapply(two_plus_patients, function(x) bam_by_patient[[x]])
+go_patients <- 1:80
+go_patients <- go_patients[!(go_patients %in% two_samp_patients)]
+go_patients <- go_patients[!(go_patients %in% timely_patients)]
 
-for(patient_x in two_plus_patients){
+################################################################################
+
+#Run for go_patients (i.e., non 2 or timely sample patients)
+#EMsteps should be set to 1500 to not get NAs for absolute ratios
+
+for(patient_x in go_patients){
   tryCatch({
     cat("Starting patient :", patient_x, "\n")
     liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
   }, error=function(e){cat("ERROR at:", patient_x, "\n")})
 }
 
-####################################
-#Patients with more than 6 samples
-timely_patients <- which(sample_num_patient > 6)
+################################################################################
+#Run for timely patients
+
+#number of BAM files our timely patients have
 timely_bam_num <- sample_num_patient[timely_patients]
 
-#divide bams
+#number of bam files to batch each timely patient by:
 nbatch1 <- ceiling(timely_bam_num/2)
 nbatch2 <- timely_bam_num - nbatch1
 
-batch1 <- sapply(1:length(timely_patients), 
-                      function(x) bam_by_patient[[timely_patients[x]]][1:nbatch1[x]])
-batch2 <- sapply(1:length(timely_patients), 
-                      function(x) tail(bam_by_patient[[timely_patients[x]]], nbatch2[x]+1))
+#Batch 1
+#initialise result vector
+timely_res1 <- vector(mode = "list", length = length(timely_patients))
 
-names(batch1) <- timely_patients
-names(batch2) <- timely_patients
+#RUN!
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    cat("\n Starting", x, "\n")
+    timely_res1[[x]] <- run_liquidCNA(timely_patients[x], 
+                                      timely = TRUE,
+                                      batch1 = TRUE,
+                                      nbatch = nbatch1[x])
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
 
-timely_liquidCNA_results <- vector(mode = "list", length = length(timely_patients))
+names(timely_res1) <- paste0("patient_",patient_ids[timely_patients],"_batch1")
 
-#batch1
-for(patient_x in timely_patients){
+#option3: Sample1 is baseSample for both batch
+# timely_res2 <- vector(mode = "list", length = length(timely_patients))
+# 
+# for(x in 1:length(timely_patients)){
+#   tryCatch({
+#     cat("\n Starting", x, "\n")
+#     base.id <- tail(timely_res1[[x]]$time,1)
+#     base.id <- as.numeric(strsplit(base.id, "e")[[1]][2])
+#     timely_res2[[x]] <- run_liquidCNA(timely_patients[x], 
+#                                            timely = TRUE,
+#                                            batch1 = FALSE,
+#                                            nbatch = nbatch2[x])
+#   }, error=function(e){cat("ERROR at:", x, "\n")})
+# }
+# 
+# names(timely_res2) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+# 
+
+timely_res2.opt3 <- vector(mode = "list", length = length(timely_patients))
+
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    base.id <- tail(timely_res1[[x]]$time,1)
+    base.id <- as.numeric(strsplit(base.id, "e")[[1]][2])
+    cat("\n Starting", x, "\n")
+    timely_res2.opt3[[x]] <- run_liquidCNA(timely_patients[x], 
+                                           timely = TRUE,
+                                           batch1 = FALSE,
+                                           nbatch = nbatch2[x])
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+names(timely_res2.opt3) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+
+
+#Stitch
+
+timely_res <- sapply(1:length(timely_patients), function(x) rbind(timely_res1[[x]][-which(timely_res1[[x]]$relratio == 0),], timely_res2.opt3[[x]]),
+                     simplify = FALSE)
+names(timely_res) <- paste0("patient_",patient_ids[timely_patients])
+
+for(x in 1:length(timely_patients)){
+  liquidCNA_results[[timely_patients[x]]] <- timely_res[[x]]
+}
+
+################################################################################
+mean(unlist(sapply(1:length(liquidCNA_results), function(x) liquidCNA_results[[x]]$cutOff)))
+#mean cutOff is 0.17
+median(unlist(sapply(1:length(liquidCNA_results), function(x) liquidCNA_results[[x]]$cutOff)))
+#median cutOff is 0.16
+
+#cut chosen as 0.16
+
+#Run for 2 time patients
+#Run!
+for(patient_x in two_samp_patients){
   tryCatch({
     cat("Starting patient :", patient_x, "\n")
-    liquidCNA_results[[patient_x]] <- run_liquidCNA(patient_x)
+    liquidCNA_results[[patient_x]] <- run_2samp_liquidCNA(patient_x)
   }, error=function(e){cat("ERROR at:", patient_x, "\n")})
 }
 
 
+################################################################################
 
-####################################
-#Patients that couldn't converge for absolute estimation
-results <- sapply(which(null_res == F), function(x) liquidCNA_results[[x]], simplify = F)
-names(results) <- paste0("patient_", patient_ids[which(null_res == F)])
+names(liquidCNA_results) <- paste0("patient_", patient_ids)
+save(liquidCNA_results, file = "../DATA/liquidCNA_results_aug2.RData")
 
-rat_converge <- sapply(1:length(results), function(x) NA %in% results[[x]]$rat)
-table(rat_converge) #TRUE = has NA; error in 15 patients
-#this means currently, out of 80 patients,
-#liquidCNA ran smoothly for only 36 patients)
+load(file = "../DATA/liquidCNA_results_aug1.RData")
+################################################################################
+
+timely_res1
+
+#RUN!
+timely_res2.opt1 <- vector(mode = "list", length = length(timely_patients))
+
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    cat("\n Starting", x, "\n")
+    
+    batch1.top <- tail(timely_res1[[x]]$time, 2)[1]
+    base.id <- as.numeric(strsplit(batch1.top, "e")[[1]][2])
+    
+    timely_res2.opt1[[x]] <- run_liquidCNA(timely_patients[x], 
+                                           timely = TRUE,
+                                           batch1 = FALSE,
+                                           nbatch = nbatch2[x])
+    
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+names(timely_res2.opt1) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
 
 
+# #RUN!
+# timely_res2.opt2 <- vector(mode = "list", length = length(timely_patients))
+# 
+# for(x in 1:length(timely_patients)){
+#   tryCatch({
+#     cat("\n Starting", x, "\n")
+#     
+#     batch1.rats <- as.numeric(timely_res1[[x]]$rat)
+#     batch1.max.rat <- timely_res1[[x]]$time[which(batch1.rats == max(batch1.rats))]
+#     base.id <- as.numeric(strsplit(batch1.max.rat, "e")[[1]][2])
+#     
+#     timely_res2.opt2[[x]] <- run_liquidCNA(timely_patients[x], 
+#                                            timely = TRUE,
+#                                            batch1 = FALSE,
+#                                            nbatch = nbatch2[x])
+#     
+#   }, error=function(e){cat("ERROR at:", x, "\n")})
+# }
+# 
+# names(timely_res2.opt2) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+
+#RUN!
+timely_res2.opt3 <- vector(mode = "list", length = length(timely_patients))
+
+for(x in 1:length(timely_patients)){
+  tryCatch({
+    base.id <- tail(timely_res1[[x]]$time,1)
+    base.id <- as.numeric(strsplit(base.id, "e")[[1]][2])
+    cat("\n Starting", x, "\n")
+    timely_res2.opt3[[x]] <- run_liquidCNA(timely_patients[x], 
+                                      timely = TRUE,
+                                      batch1 = FALSE,
+                                      nbatch = nbatch2[x])
+  }, error=function(e){cat("ERROR at:", x, "\n")})
+}
+
+names(timely_res2.opt3) <- paste0("patient_",patient_ids[timely_patients],"_batch2")
+
+
+
+timely_res.opt1 <- sapply(1:length(timely_patients), function(x) rbind(timely_res1[[x]][-which(timely_res1[[x]]$relratio == 0),], timely_res2.opt1[[x]]), simplify = F)
+names(timely_res.opt1) <- paste0("patient_",patient_ids[timely_patients])
+
+# timely_res.opt2 <- sapply(1:length(timely_patients), function(x) rbind(timely_res1[[x]][-which(timely_res1[[x]]$relratio == 0),], timely_res2.opt2[[x]]), simplify = F)
+# names(timely_res.opt2) <- paste0("patient_",patient_ids[timely_patients])
+
+timely_res.opt3 <- sapply(1:length(timely_patients), function(x) rbind(timely_res1[[x]][-which(timely_res1[[x]]$relratio == 0),], timely_res2.opt3[[x]]), simplify = F)
+names(timely_res.opt3) <- paste0("patient_",patient_ids[timely_patients])
+
+
+x=6
+base.to.first <- function(rats){
+  numeric.rat <- as.numeric(rats)
+  base <- tail(numeric.rat,1)
+  non.base <- numeric.rat[1:(length(numeric.rat)-1)]
+  ordered <- c(base, non.base)
+  return(ordered)
+}
+##
+opt1_ordering <- timely_res.opt1[[x]]$time
+non.base <- opt1_ordering[1:(length(opt1_ordering)-1)]
+opt1_ordering <- c("Sample2", non.base)
+
+opt3_ordering <- timely_res.opt3[[x]]$time
+base <- tail(opt3_ordering,1)
+non.base <- opt3_ordering[1:(length(opt3_ordering)-1)]
+opt3_ordering <- c(base, non.base)
+
+##
+pdf(file="Fig_stitch_opt.pdf", width = 7, height = 4.5)
+par(mfrow = c(1,2))
+
+plot(base.to.first(timely_res.opt1[[x]]$rat), type = "l", xaxt = "n", 
+     main = "\n \n Option 1 & 2",
+     ylab = "Sub-clonal ratio estimates", xlab = "Sample Order")
+axis(1, at=1:8, labels=opt1_ordering)
+abline(v=nbatch1[x]+0.5, lty = 2, col = "red")
+plot(base.to.first(timely_res.opt3[[x]]$rat), xaxt = "n", type = "l",
+     main = "\n \n Option 3", 
+     ylab = "Sub-clonal ratio estimates", xlab = "Sample Order")
+abline(v=nbatch1[x]+0.5, lty = 2, col = "red")
+axis(1, at=1:8, labels=opt3_ordering)
+title("\n \n Comparison of stitching options | Patient 3068", outer = T)
+dev.off()

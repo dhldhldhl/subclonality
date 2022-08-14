@@ -1,0 +1,144 @@
+---
+title: "liquidCNA_presenting_results"
+author: "Dohun Lee"
+date: '2022-07-14'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pracma); library(ggplot2); library(ggpubr); library(reshape2); 
+library(mixtools); library(fitdistrplus); library(dplyr); library(QDNAseq); 
+require(gtools); library(gridExtra); library(devtools)
+source_url("https://raw.githubusercontent.com/elakatos/liquidCNA/main/mixture_estimation_functions.R")
+knitr::opts_knit$set(root.dir = '/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/')
+setwd("/Users/dhl/laheen Dropbox/DHL DHL/Cambridge/Internship/subclonality/")
+source("SCRIPTS/3_liquidCNA.R")
+load("../DATA/bam_by_patient.RData")
+load("../DATA/antwerpData.RData")
+load("../DATA/weekly_july2.RData")
+load("../DATA/liquidCNA_results_july1.RData")
+load("../DATA/liquidCNA_results_july2.RData")
+```
+
+```{r, include = FALSE}
+plot.3C <- function(timeSample, cn.df, seg.df, seg.sub, seg.plot, patient_id = NULL){
+  p.id <- patient_id
+  cns.of.bins <- function(x.seg.id){
+    #requires: cn.df; seg.df; seg.sub; seg.plot
+    #Input: x.seg.id <- id (row number) out of all ensemble segments (seg.sub)  for clonal, unstable or sub-clonal segments
+  #Output: cns of the bins of segments that are either clonal, unstable or sub-clonal.
+    
+    #make an empty vector length of the genome (total number of bins)
+    bins <- rep(NA, nrow(cn.df))
+    
+    if(length(x.seg.id) == 0){
+      return(bins)
+    } else{
+    #fill in the bin
+      for(x in 1:length(x.seg.id)){
+      seg.loci.df <- seg.sub[x.seg.id,]
+      start <- as.numeric(seg.loci.df[x,][1])
+      end <- as.numeric(seg.loci.df[x,][2])
+      bins[start:end] <- seg.df[start,ts]
+    }
+    return(bins)
+    }
+  }
+
+  ts <- timeSample
+  
+  ################################################
+  #Which of all ensemble segments clonal, unstable or sub-clonal?
+  
+  #subclonal
+  subclonal.seg <- seg.plot[seg.plot$filtered == TRUE & seg.plot$order == TRUE,]
+  subclonal.seg.id <- as.numeric(rownames(subclonal.seg))
+  
+  #unstable
+  unstable.seg <- seg.plot[seg.plot$filtered == TRUE & seg.plot$order == FALSE,]
+  unstable.seg.id <- as.numeric(rownames(unstable.seg))
+  
+  #clonal
+  clonal.seg <- seg.plot[seg.plot$filtered == FALSE & seg.plot$order == FALSE,]
+  clonal.seg.id <- as.numeric(rownames(clonal.seg))
+  
+  ################################################
+  #cns.of.bins() to get CNS of bins involved in the three segment types
+  
+  subclonal.bins.cns <- cns.of.bins(subclonal.seg.id)
+  unstable.bins.cns <- cns.of.bins(unstable.seg.id)
+  clonal.bins.cns <- cns.of.bins(clonal.seg.id)
+  
+  ################################################
+  #Plot
+  
+  plot(cn.df[,ts], col = "gray", xlab = "Bin", ylab = "CN states (raw from QDNAseq)",
+       main= paste0("Segments used by LiquidCNA to calculate subclonality. \n Sample", ts," from Patient ", p.id))
+  points(seg.df[,ts], col = "lightblue")
+  points(unstable.bins.cns, col = "blue")
+  points(clonal.bins.cns, col = "black")
+  points(subclonal.bins.cns, col = "firebrick3")
+  legend("topright", legend=c("sub-clonal", "unstable", "clonal", "seg.df", "cn.df"), 
+         col=c("firebrick3", "blue", "black", "lightblue", "gray"), pch=21, cex=0.8)
+}
+
+```
+
+# Patient 1005
+
+## Results
+```{r}
+liquidCNA_results$patient_1005
+```
+
+## Figure
+```{r}
+plot.3C(1, cn.df.7, seg.df.7, seg.sub.7, seg.plot.7, 1005)
+plot.3C(2, cn.df.7, seg.df.7, seg.sub.7, seg.plot.7, 1005)
+plot.3C(3, cn.df.7, seg.df.7, seg.sub.7, seg.plot.7, 1005)
+```
+
+# Patient 3614 with 65 sub-clonal segments
+
+## Results
+```{r}
+liquidCNA_results$patient_3614
+```
+
+## Figure
+```{r}
+t <- 1
+plot.3C(t, cn.df.74, seg.df.74, seg.sub.74, seg.plot.74, patient_ids[[74]]); text(300, 6.5, paste0("purity: ", go_results_1500[[48]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[48]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[48]]$rat[[match(paste0("Sample", t), go_results_1500[[48]]$time)]]), 4)))
+t <- 2
+plot.3C(t, cn.df.74, seg.df.74, seg.sub.74, seg.plot.74, patient_ids[[74]]); text(300, 2.7, paste0("purity: ", go_results_1500[[48]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[48]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[48]]$rat[[match(paste0("Sample", t), go_results_1500[[48]]$time)]]), 4)))
+t <- 3
+plot.3C(t, cn.df.74, seg.df.74, seg.sub.74, seg.plot.74, patient_ids[[74]]); text(300, 4.3, paste0("purity: ", go_results_1500[[48]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[48]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[48]]$rat[[match(paste0("Sample", t), go_results_1500[[48]]$time)]]), 4)))
+```
+
+# Patient 388 with 5 sub-clonal segments
+
+## Results
+```{r}
+liquidCNA_results$patient_388
+```
+
+## Figure
+```{r}
+t <- 1
+plot.3C(t, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, patient_ids[[2]]); text(300, 2.7, paste0("purity: ", go_results_1500[[2]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[2]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[2]]$rat[[match(paste0("Sample", t), go_results_1500[[2]]$time)]]), 4)))
+t <- 2
+plot.3C(t, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, patient_ids[[2]]); text(300, 3.2, paste0("purity: ", go_results_1500[[2]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[2]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[2]]$rat[[match(paste0("Sample", t), go_results_1500[[2]]$time)]]), 4)))
+t <- 3
+plot.3C(t, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, patient_ids[[2]]); text(300, 2.63, paste0("purity: ", go_results_1500[[2]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[2]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[2]]$rat[[match(paste0("Sample", t), go_results_1500[[2]]$time)]]), 4)))
+t <- 4
+plot.3C(t, cn.df.2, seg.df.2, seg.sub.2, seg.plot.2, patient_ids[[2]]); text(300, 2.39, paste0("purity: ", go_results_1500[[2]]$purity_mean[[match(paste0("Sample", t), go_results_1500[[2]]$time)]], "\nrat: ", round(as.numeric(go_results_1500[[2]]$rat[[match(paste0("Sample", t), go_results_1500[[2]]$time)]]), 4)))
+```
+
+
+
+
+
+
+
+
