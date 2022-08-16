@@ -1,5 +1,5 @@
 # Github page for the project: Clinical utility of subclonal evolution inferred using liquidCNA in metastatic breast cancer
-## Thesis submitted for MPhil in Computational Biology, Cambridge University
+## Thesis submitted for MPhil in Computational Biology, University of Cambridge
 
 # Abstract
 ## Background: Liquid biopsy and the analysis of cell free DNA (cfDNA) in the blood offer a minimally invasive method to moni- tor cancer evolution. Recently, liquidCNA, a computational algo- rithm that infers subclonal architecture has been released. Un- like current methods which uses mutation profiles, liquidCNA utilises information on somatic copy number aberrations from low-pass whole genome sequencing (lpWGS) 0.1x. LiquidCNA offers an economical method to characterise subclonal events. The purpose of this study was to assess the clinical utility of liquidCNA’s output in monitoring response to therapy.
